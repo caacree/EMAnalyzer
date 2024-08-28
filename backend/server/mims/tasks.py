@@ -102,7 +102,7 @@ def preprocess_mims_image_set(mims_image_set_id):
         output_dir = os.path.join(settings.MEDIA_ROOT, relative_dir)
 
         os.makedirs(output_dir, exist_ok=True)
-        img = get_concatenated_image(mims_image_set.em_image, isotope)
+        img = get_concatenated_image(mims_image_set, isotope)
         img = pyvips.Image.new_from_array(img)
 
         id_url = os.path.join("http://localhost:8000/media", relative_dir)

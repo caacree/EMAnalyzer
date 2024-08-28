@@ -7,8 +7,8 @@ import os
 
 @shared_task
 def convert_to_dzi_format(em_image_id):
-    EMImage = apps.get_model("emimage", "EMImage")
-    em_image = EMImage.objects.get(id=em_image_id)
+    Image = apps.get_model("image", "Image")
+    em_image = Image.objects.get(id=em_image_id)
     img = pyvips.Image.new_from_file(em_image.file.path, access="sequential")
 
     # Define the target directory and create it if it does not exist
@@ -30,7 +30,7 @@ def convert_to_dzi_format(em_image_id):
         layout=pyvips.enums.ForeignDzLayout.IIIF3,
     )
 
-    # Update the dzi_file field in the EMImage model
+    # Update the dzi_file field in the Image model
     em_image.dzi_file.name = os.path.join(
         "em_images", str(em_image.id), "converted", "info.json"
     )

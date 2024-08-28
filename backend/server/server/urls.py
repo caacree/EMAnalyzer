@@ -22,7 +22,8 @@ from django.urls import path, include
 
 urlpatterns = [
     path("api/admin/", admin.site.urls),
-    path("api/", include("emimage.urls", namespace="emimage")),
+    path("api/", include("core.urls", namespace="core")),
+    path("api/", include("image.urls", namespace="image")),
     path("api/", include("mims.urls", namespace="mims")),
 ]
 

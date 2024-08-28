@@ -1,7 +1,7 @@
 # serializers.py
 
 from rest_framework import serializers
-from emimage.models import EMImage
+from image.models import Image
 import os
 from pathlib import Path
 from django.conf import settings
@@ -71,7 +71,7 @@ class MIMSImageSetSerializer(serializers.ModelSerializer):
         model = MIMSImageSet
         fields = [
             "id",
-            "em_image",
+            "canvas",
             "mims_images",
             "created_at",
             "updated_at",
@@ -113,20 +113,17 @@ class MIMSImageSetSerializer(serializers.ModelSerializer):
         return composite_images
 
 
-class EMImageSerializer(serializers.ModelSerializer):
-    mims_sets = MIMSImageSetSerializer(
-        many=True, read_only=True, source="mimsimageset_set"
-    )
+class ImageSerializer(serializers.ModelSerializer):
 
     class Meta:
-        model = EMImage
+        model = Image
         fields = [
             "id",
+            "canvas",
             "file",
             "dzi_file",
             "pixel_size_nm",
             "friendly_name",
             "created_at",
             "updated_at",
-            "mims_sets",
         ]

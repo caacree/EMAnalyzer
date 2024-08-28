@@ -1,20 +1,7 @@
-from django.conf import settings
 import numpy as np
 import os
-from matplotlib import pyplot as plt
-import functools
-import math
 import sims
-import copy
-from skimage.measure import regionprops
-from scipy import spatial
-import pickle
-from matplotlib.figure import Figure
-import pyvips
-from emimage.models import EMImage
-from mims.models import MIMSImage, MIMSImageSet
 from PIL import Image
-from scipy.ndimage import rotate
 import pprint
 from pathlib import Path
 import sims
@@ -39,10 +26,9 @@ def get_autocontrast_image_path(mims_image, species):
 
 # Function to load images and their positions
 def load_images_and_positions(
-    em_image,
+    mims_image_set,
     species,
 ):
-    mims_image_set = em_image.mimsimageset_set.first()
     mims_images = list(mims_image_set.mims_images.all())
 
     images = []
@@ -65,11 +51,9 @@ def load_images_and_positions(
 
 
 # Function to create and display the concatenated image
-def get_concatenated_image(em_image, species, rotation_angle=None, flip=False):
-    images, positions = load_images_and_positions(em_image, species)
-    mims_meta = sims.SIMS(
-        em_image.mimsimageset_set.first().mims_images.first().file.path
-    ).header["Image"]
+def get_concatenated_image(mims_image_set, species, rotation_angle=None, flip=False):
+    images, positions = load_images_and_positions(mims_image_set, species)
+    mims_meta = sims.SIMS(mims_image_set.mims_images.first().file.path).header["Image"]
     mims_pixel_size = mims_meta["raster"] / mims_meta["width"]
 
     if not images:

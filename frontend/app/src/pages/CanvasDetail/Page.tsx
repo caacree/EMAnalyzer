@@ -4,34 +4,34 @@ import React, { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/api";
 import OpenSeaDragon from '@/components/shared/OpenSeaDragon';
-import MIMSImageSet from "./MimsImageSet";
+import MIMSImageSet from "./MimsImageSetListItem";
 import MimsOpenSeaDragon from "../../components/shared/MimsOpenSeaDragon";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/shared/ui/tabs";
 import { Checkbox } from "../../components/shared/ui/checkbox";
 import { Slider } from "../../components/shared/ui/slider";
-import { XCircleIcon } from "lucide-react";
+import { TrashIcon, XCircleIcon } from "lucide-react";
 import { postImageSetPoints } from "../../api/api";
 
-const fetchEMImageDetail = async (id: string) => {
-  const res = await api.get(`em_images/${id}/`);
+const fetchCanvasDetail = async (id: string) => {
+  const res = await api.get(`canvas/${id}/`);
   return res.data;
 };
 
-const EMImageDetail = () => {
+const CanvasDetail = () => {
   const params = useParams({ strict: false });
   const searchParams = useSearch({ strict: false });
   const queryClient = useQueryClient();
-  const { emImageId } = params;
+  const { canvasId } = params;
   const { mimsImageSet } = searchParams as any;
   const [selectedIsotope, setSelectedIsotope] = useState("32S");
-  const { data: image, isLoading } = useQuery({
-    queryKey: ['em_image', emImageId as string],
-    queryFn: () => fetchEMImageDetail(emImageId as string),
+  const { data: canvas, isLoading } = useQuery({
+    queryKey: ['canvas', canvasId as string],
+    queryFn: () => fetchCanvasDetail(canvasId as string),
   });
   const navigate = useNavigate({ from: window.location.pathname });
   const [mimsOptions, setMimsOptions] = useState<any>({'flipped': false, 'degrees': 0});
   const [isSelectingPoints, setIsSelectingPoints] = useState(false);
-  const [points, setPoints] = useState<any[]>({ em: [], mims: [] });
+  const [points, setPoints] = useState<any>({ em: [], mims: [] });
   const handleEMClickRef = useRef((point: any) => {});
   const handleMimsClickRef = useRef((point: any) => {});
   const [files, setFiles] = useState<File[]>([]);
@@ -48,16 +48,18 @@ const EMImageDetail = () => {
     }
   }, [isSelectingPoints, points]);
 
+  const image = canvas?.images?.[0];
+
   useEffect(() => {
     if (image && mimsImageSet) {
-      const selectedMimsSet = image?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSet);
+      const selectedMimsSet = canvas?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSet);
       if (!selectedMimsSet) {
         return;
       }
-      const degrees = (360 - selectedMimsSet?.rotation_degrees) % 360
+      const degrees = (selectedMimsSet?.rotation_degrees) % 360
       setMimsOptions({flipped: selectedMimsSet?.flip, degrees});
     }
-  }, [image, mimsImageSet]);
+  }, [canvas, mimsImageSet]);
     
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
@@ -69,7 +71,7 @@ const EMImageDetail = () => {
     const formData = new FormData();
     
     // Add the EM image ID to the form data
-    formData.append('em_image', image.id);
+    formData.append('canvas', canvas.id);
   
     // Add files to the form data
     files.forEach((file, index) => {
@@ -77,7 +79,7 @@ const EMImageDetail = () => {
     });
   
     try {
-      await api.post('/mims_image_sets/', formData, {
+      await api.post('/mims_image_set/', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -96,10 +98,14 @@ const EMImageDetail = () => {
     postImageSetPoints(mimsImageSet, points)
   }
 
-  const selectedMimsSet = image?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSet);
+  const handleDeleteMimsSet = (imageSetId: string) => {
+    api.delete(`/mims_image_set/${imageSetId}/`).then(() => queryClient.invalidateQueries());
+  }
+
+  const selectedMimsSet = canvas?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSet);
   return (
     <div className="w-full flex flex-col ml-10 gap-5">
-      <h2 className="flex gap-20"><span>EM Image: {image.friendly_name}</span><span>{selectedMimsSet ? `Selected Mims Image Set: ${selectedMimsSet.id}` : null}</span></h2>
+      <h2 className="flex gap-20"><span>Canvas: {canvas.name}</span><span>{selectedMimsSet ? `Selected Mims Image Set: ${selectedMimsSet.id}` : null}</span></h2>
       {selectedMimsSet ? (
         <div>
           <div className="flex gap-2 items-center">
@@ -143,14 +149,16 @@ const EMImageDetail = () => {
             {!mimsImageSet ? (
               <>
                 <div>MIMS Image sets</div>
-                {image?.mims_sets?.map((mimsImageSet: any) => (
-                  <MIMSImageSet key={mimsImageSet.id} mimsImageSet={mimsImageSet} onSelect={(newId: string) => {
+                {canvas?.mims_sets?.map((mimsImageSet: any) => (
+                  <><MIMSImageSet key={mimsImageSet.id} mimsImageSet={mimsImageSet} onSelect={(newId: string) => {
                     navigate({ search: (prev: any) => ({ ...prev, mimsImageSet: newId }) });
-                  }} />
+                  }} /><button onClick={() => handleDeleteMimsSet(mimsImageSet.id)}>
+                  <TrashIcon />
+                </button></>
                 ))}
               </>
             ) : null}
-            {selectedMimsSet ? (
+            {selectedMimsSet?.composite_images ? (
               <div className="">
                 <Tabs defaultValue={selectedIsotope}>
                   <TabsList className="flex space-x-1">
@@ -171,7 +179,7 @@ const EMImageDetail = () => {
                         </div>
                       </div>
                       <MimsOpenSeaDragon 
-                        iiifContent={selectedMimsSet.composite_images[isotope]+"/info.json"} 
+                        iiifContent={"http://localhost:8000" + selectedMimsSet.composite_images[isotope]+"/info.json"} 
                         options={mimsOptions}
                         onClick={(point: any) => handleMimsClickRef.current(point)}
                         points={points.mims}
@@ -202,4 +210,4 @@ const EMImageDetail = () => {
     </div>
   );
 };
-export default EMImageDetail;
+export default CanvasDetail;

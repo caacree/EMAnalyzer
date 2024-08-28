@@ -1,50 +1,65 @@
 import React, { useState } from "react";
-import { useEMImagesQuery, useCreateEMImageMutation, useDeleteEMImageMutation } from "@/queries/queries";
+import { useCanvasListQuery, useCreateCanvasMutation, useDeleteCanvasMutation } from "@/queries/queries";
 import { Link } from "@tanstack/react-router";
 import { TrashIcon } from "lucide-react";
+import {createCanvas, createImage} from "../api/api";
+import { useQueryClient } from "@tanstack/react-query";
 
 const Dashboard = () => {
-  const { data: emImages, isLoading } = useEMImagesQuery();
-  const createEMImageMutation = useCreateEMImageMutation();
-  const deleteEMImageMutation = useDeleteEMImageMutation();
+  const { data: canvases, isLoading } = useCanvasListQuery();
+  const queryClient = useQueryClient();
+  const createCanvasMutation = useCreateCanvasMutation();
+  const deleteCanvasMutation = useDeleteCanvasMutation();
 
   const [file, setFile] = useState<File | null>(null);
   const [friendlyName, setFriendlyName] = useState<string>('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (file && friendlyName) {
+    if (friendlyName) {
       const formData = new FormData();
-      formData.append('file', file);
-      formData.append('friendly_name', friendlyName);
-      createEMImageMutation.mutate(formData);
+      formData.append('name', friendlyName);
+      createCanvas(formData).then((res) => {
+        if (file) {
+          const imageFormData = new FormData();
+          imageFormData.append('file', file);
+          imageFormData.append('canvas', res.id);
+          return createImage(imageFormData).then((res: any) => {
+            console.log(res);
+          });
+        }
+      }).then(() => {
+        queryClient.invalidateQueries(['canvas_list']);
+        setFile(null);
+        setFriendlyName('');
+      });
     }
   };
 
   const handleDelete = (id: string) => {
-    deleteEMImageMutation.mutate(id, {
+    deleteCanvasMutation.mutate(id, {
       onSuccess: () => {
-        console.log(`Deleted image with id: ${id}`); // Debug log
+        console.log(`Deleted canvas with id: ${id}`); // Debug log
       },
-      onError: (error) => {
-        console.error(`Error deleting image with id: ${id}`, error); // Debug log
+      onError: (error: any) => {
+        console.error(`Error deleting canvas with id: ${id}`, error); // Debug log
       }
     });
   };
   
   return (
-    <div className="flex flex-col w-full max-w-[500px] m-auto bg-background p-4">
+    <div className="flex flex-col w-full max-w-[500px] m-auto bg-background p-4 gap-4">
       <h1>Dashboard</h1>
       <div>
-        <h2>Existing EMImages</h2>
+        <h2>Existing Canvases</h2>
         {isLoading ? (
           <p>Loading...</p>
         ) : (
           <ul>
-            {emImages.sort((a: any, b: any) => a.friendly_name.localeCompare(b.friendly_name)).map((image: any) => (
-              <li key={image.id} className="flex items-center space-x-2">
-                <Link to={`/em_image/${image.id}`} className="flex-grow">{image.friendly_name}</Link>
-                <button onClick={() => handleDelete(image.id)}>
+            {canvases?.sort((a: any, b: any) => a.name.localeCompare(b.name)).map((canvas: any) => (
+              <li key={canvas.id} className="flex items-center space-x-2">
+                <Link to={`/canvas/${canvas.id}`} className="flex-grow">{canvas.name}</Link>
+                <button onClick={() => handleDelete(canvas.id)}>
                   <TrashIcon />
                 </button>
               </li>
@@ -53,7 +68,7 @@ const Dashboard = () => {
         )}
       </div>
       <div>
-        <h2>Create New EMImage</h2>
+        <h2>Create a New Project</h2>
         <form onSubmit={handleSubmit}>
           <div>
             <label>
@@ -68,16 +83,15 @@ const Dashboard = () => {
           </div>
           <div>
             <label>
-              File:
+              File: {file?.name}
               <input
                 type="file"
                 onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
-                required
               />
             </label>
           </div>
-          <button type="submit" disabled={createEMImageMutation.isLoading}>
-            {createEMImageMutation.isLoading ? 'Uploading...' : 'Create'}
+          <button type="submit" disabled={createCanvasMutation.isLoading}>
+            {createCanvasMutation?.isLoading ? 'Uploading...' : 'Create'}
           </button>
         </form>
       </div>

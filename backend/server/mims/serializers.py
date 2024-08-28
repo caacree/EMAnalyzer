@@ -3,23 +3,9 @@
 from rest_framework import serializers
 from django.conf import settings
 import os
-from emimage.models import EMImage
+from image.models import Image
 from mims.models import MIMSImageSet, MIMSImage, Isotope, MIMSAlignment
 from pathlib import Path
-
-
-class EMImageSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = EMImage
-        fields = [
-            "id",
-            "file",
-            "dzi_file",
-            "friendly_name",
-            "pixel_size_nm",
-            "created_at",
-            "updated_at",
-        ]
 
 
 class IsotopeImageSerializer(serializers.ModelSerializer):
@@ -53,24 +39,24 @@ class IsotopeImageSerializer(serializers.ModelSerializer):
 
 
 class MIMSImageSetSerializer(serializers.ModelSerializer):
-    em_image = EMImageSerializer(read_only=True)
     composite_images = serializers.SerializerMethodField()
 
     class Meta:
         model = MIMSImageSet
+        depth = 1
         fields = [
             "id",
-            "em_image",
+            "canvas",
             "created_at",
             "updated_at",
             "composite_images",
             "flip",
             "rotation_degrees",
-            "em_coordinates_x",
-            "em_coordinates_y",
-            "em_scale",
+            "canvas_x",
+            "canvas_y",
+            "pixel_size_nm",
+            "mims_images",
         ]
-        depth = 1
 
     def get_composite_images(self, obj):
         composites_dir = os.path.join(

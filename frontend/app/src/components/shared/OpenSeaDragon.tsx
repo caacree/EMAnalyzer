@@ -52,7 +52,7 @@ const OpenSeaDragon = ({ iiifContent, options, viewerPos, onClick, points }: {ii
       osdViewerRef.current = OpenSeadragon({
         prefixUrl: '/openseadragon/images/',
         id: viewerRef.current.id,
-        tileSources: [{tileSource: iiifContent}],
+        tileSources: [{tileSource: iiifContent} as any],
         minZoomLevel: 0.9,
         overlays,
         gestureSettingsMouse: {
@@ -98,6 +98,8 @@ const OpenSeaDragon = ({ iiifContent, options, viewerPos, onClick, points }: {ii
           return
         }
         const imageCoords = tiledImage.viewerElementToImageCoordinates(e.position);
+        console.log(imageCoords);
+        
         onClick && onClick({x: imageCoords.x, y: imageCoords.y});
       });
     }

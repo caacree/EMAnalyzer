@@ -1,5 +1,5 @@
 import { createFileRoute, } from "@tanstack/react-router";
-import EMImageDetail from "@/pages/EmImageDetail/Page";
+import EMImageDetail from "@/pages/CanvasDetail/Page";
 
 export const Route = createFileRoute("/em_image/$emImageId")({
   component: EMImageDetail,

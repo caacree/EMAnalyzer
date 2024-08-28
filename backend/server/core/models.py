@@ -18,3 +18,29 @@ class AbstractBaseModel(models.Model):
 
     def __repr__(self):
         return f"<{self.__class__.__name__} {self.id}>"
+
+
+class Canvas(AbstractBaseModel):
+    """
+    Base model for a canvas that images are aligned to
+    """
+
+    name = models.CharField(max_length=50, unique=True)
+    width = models.IntegerField(null=True)
+    height = models.IntegerField(null=True)
+    pixel_size_nm = models.FloatField(blank=True, null=True)
+
+    def __str__(self):
+        return self.name or self.id
+
+
+class CanvasObj(AbstractBaseModel):
+    """
+    Base model for images that are aligned to a canvas
+    """
+
+    flip = models.BooleanField(default=False)
+    rotation_degrees = models.IntegerField(null=True)
+    canvas_x = models.IntegerField(null=True)
+    canvas_y = models.IntegerField(null=True)
+    pixel_size_nm = models.FloatField(null=True)

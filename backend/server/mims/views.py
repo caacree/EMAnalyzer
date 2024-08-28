@@ -1,6 +1,8 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
+
+from core.models import Canvas
 from .models import MIMSImageSet, MIMSImage, Isotope
 from .serializers import MIMSImageSetSerializer, MIMSImageSerializer
 from .tasks import preprocess_mims_image_set
@@ -18,13 +20,15 @@ class MIMSImageSetViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         data = request.data
-        em_image_id = data.get("em_image")
-        image_set = MIMSImageSet.objects.create(em_image_id=em_image_id)
+        canvas_id = data.get("canvas")
+        canvas = Canvas.objects.get(id=canvas_id)
+        image_set = MIMSImageSet.objects.create(canvas=canvas)
 
         for file_key in data.keys():
             if file_key.startswith("file_"):
                 file = data[file_key]
                 MIMSImage.objects.create(
+                    canvas=canvas,
                     image_set=image_set,
                     file=file,
                 )

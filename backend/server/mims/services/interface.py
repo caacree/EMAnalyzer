@@ -4,7 +4,7 @@ import numpy as np
 import pyvips
 import sims
 from django.conf import settings
-from mims.models import MIMSAlignment
+
 from .image_utils import (
     manipulate_image,
     update_top_locations,
@@ -130,7 +130,7 @@ def create_alignment_estimates(mims_image, confirmed_alignment=None):
         )
         print(new_em_x, new_em_y)
         mims_image.alignments.filter(status="FROM_SET").delete()
-        new_from_set_alignment = MIMSAlignment(
+        """new_from_set_alignment = MIMSAlignment(
             mims_image=mims_image,
             status="FROM_SET",
             x_offset=new_em_x,
@@ -139,7 +139,7 @@ def create_alignment_estimates(mims_image, confirmed_alignment=None):
             flip_hor=confirmed_alignment.flip_hor,
             scale=confirmed_alignment.scale,
         )
-        new_from_set_alignment.save()
+        new_from_set_alignment.save()"""
         return
 
     # Clear old alignments

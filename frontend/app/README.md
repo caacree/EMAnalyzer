@@ -31,4 +31,4 @@ export default {
 
 
 # Useful commands
-# Start celery locally: celery
+# Start celery locally: celery -A server worker --concurrency=1 -P threads

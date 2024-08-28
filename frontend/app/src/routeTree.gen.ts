@@ -14,6 +14,7 @@ import { Route as rootRoute } from './routes/__root'
 import { Route as IndexImport } from './routes/index'
 import { Route as MimsimageMimsImageIdImport } from './routes/mims_image/$mimsImageId'
 import { Route as EmimageEmImageIdImport } from './routes/em_image/$emImageId'
+import { Route as CanvasCanvasIdImport } from './routes/canvas/$canvasId'
 
 // Create/Update Routes
 
@@ -32,6 +33,11 @@ const EmimageEmImageIdRoute = EmimageEmImageIdImport.update({
   getParentRoute: () => rootRoute,
 } as any)
 
+const CanvasCanvasIdRoute = CanvasCanvasIdImport.update({
+  path: '/canvas/$canvasId',
+  getParentRoute: () => rootRoute,
+} as any)
+
 // Populate the FileRoutesByPath interface
 
 declare module '@tanstack/react-router' {
@@ -41,6 +47,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexImport
+      parentRoute: typeof rootRoute
+    }
+    '/canvas/$canvasId': {
+      id: '/canvas/$canvasId'
+      path: '/canvas/$canvasId'
+      fullPath: '/canvas/$canvasId'
+      preLoaderRoute: typeof CanvasCanvasIdImport
       parentRoute: typeof rootRoute
     }
     '/em_image/$emImageId': {
@@ -64,6 +77,7 @@ declare module '@tanstack/react-router' {
 
 export const routeTree = rootRoute.addChildren({
   IndexRoute,
+  CanvasCanvasIdRoute,
   EmimageEmImageIdRoute,
   MimsimageMimsImageIdRoute,
 })
@@ -77,12 +91,16 @@ export const routeTree = rootRoute.addChildren({
       "filePath": "__root.tsx",
       "children": [
         "/",
+        "/canvas/$canvasId",
         "/em_image/$emImageId",
         "/mims_image/$mimsImageId"
       ]
     },
     "/": {
       "filePath": "index.tsx"
+    },
+    "/canvas/$canvasId": {
+      "filePath": "canvas/$canvasId.tsx"
     },
     "/em_image/$emImageId": {
       "filePath": "em_image/$emImageId.tsx"

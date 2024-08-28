@@ -1,8 +1,9 @@
 from django.db import models
-from core.models import AbstractBaseModel
-from emimage.models import EMImage
+from core.models import AbstractBaseModel, CanvasObj, Canvas
 import os
 import shutil
+from mims.services import get_concatenated_image
+from django.conf import settings
 
 
 def get_mims_image_upload_path(instance, filename):
@@ -16,24 +17,35 @@ class Isotope(AbstractBaseModel):
         return self.name
 
 
-class MIMSImageSet(AbstractBaseModel):
-    em_image = models.ForeignKey(EMImage, on_delete=models.CASCADE)
-    flip = models.BooleanField(default=False)
-    rotation_degrees = models.IntegerField(null=True)
-    em_coordinates_x = models.IntegerField(null=True)
-    em_coordinates_y = models.IntegerField(null=True)
-    em_scale = models.FloatField(null=True)
+class MIMSImageSet(CanvasObj):
+    canvas = models.ForeignKey(
+        Canvas, on_delete=models.CASCADE, related_name="mims_sets"
+    )
 
     def __str__(self):
         return f"MIMSImageSet {self.id}"
 
     def delete(self, *args, **kwargs):
         # Delete the media directory with the image files
-        shutil.rmtree(os.path.join(settings.MEDIA_ROOT, "mims_image_sets", self.id))
+        shutil.rmtree(
+            os.path.join(settings.MEDIA_ROOT, "mims_image_sets", str(self.id))
+        )
         super().delete(*args, **kwargs)
 
+    def get_canvas_composite(self, isotope):
+        if not isotope:
+            isotopes = self.mims_images.first().isotopes.all()
+            if not isotopes:
+                return None
+            if "SE" in isotopes:
+                isotope = "SE"
+            else:
+                isotope = isotopes[0]
+        return get_concatenated_image(self, isotope)
 
-class MIMSImage(AbstractBaseModel):
+
+class MIMSImage(CanvasObj):
+    canvas = models.ForeignKey(Canvas, on_delete=models.CASCADE, related_name="mims")
     image_set = models.ForeignKey(
         MIMSImageSet, related_name="mims_images", on_delete=models.CASCADE
     )
@@ -50,7 +62,6 @@ class MIMSImage(AbstractBaseModel):
     # - "COMPLETE" for final alignment after user-selected points
     status = models.CharField(max_length=50, default="PREPROCESSING")
     file = models.FileField(upload_to=get_mims_image_upload_path)
-    pixel_size_nm = models.FloatField(blank=True, null=True)
     isotopes = models.ManyToManyField(Isotope)
 
     def __str__(self):
