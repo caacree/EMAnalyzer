@@ -106,79 +106,59 @@ def mask_to_polygon(mask, single_polygon=True):
 def create_registration_images(mims_image, masks=None):
     stime = time.time()
     print("creating registration images", time.time() - stime)
-    em_image_obj = np.array(
-        Image.open(mims_image.image_set.canvas.images.first().file.path)
-    )
+    em_image_obj = Image.open(mims_image.image_set.canvas.images.first().file.path)
     mims_path = Path(mims_image.file.path)
     save_reg_loc = os.path.join(mims_path.parent, mims_path.stem, "registration")
     if not os.path.exists(save_reg_loc):
         os.makedirs(save_reg_loc)
-    # Create the cropped EM image for registration
-    # as well as the scaled up, translated MIMS image
-    #alignment = mims_image.alignments.filter(
-    #    status="USER_ROUGH_ALIGNMENT"
-    #).first()
+
     alignment = mims_image.alignments.filter(status="FINAL_TWEAKED_ONE").first()
     if not alignment:
         alignment = mims_image.alignments.first()
     scale = alignment.scale
-    em_cropped = None
+
+    # Transform the EM image instead of the MIMS images
+    em_image_transformed = em_image_obj.rotate(
+        alignment.rotation_degrees,
+        expand=True,
+        resample=Image.BICUBIC
+    )
+    if alignment.flip_hor:
+        em_image_transformed = em_image_transformed.transpose(Image.FLIP_LEFT_RIGHT)
+    
+    # Scale down the EM image (inverse of scaling up MIMS)
+    em_image_transformed = em_image_transformed.resize(
+        (int(em_image_transformed.width / scale), int(em_image_transformed.height / scale)),
+        Image.BICUBIC
+    )
+    em_image_transformed = np.array(em_image_transformed)
 
     for isotope in mims_image.isotopes.all():
         print(f"isotope {isotope} starting at {time.time() - stime}")
         mims_image_obj = Image.open(get_autocontrast_image_path(mims_image, isotope))
-        mims_image_obj = mims_image_obj.rotate(-alignment.rotation_degrees, expand=True)
-        if alignment.flip_hor:
-            mims_image_obj = mims_image_obj.transpose(Image.FLIP_LEFT_RIGHT)
         mims_image_obj = np.array(mims_image_obj)
-        mims_image_obj = cv2.resize(
-            mims_image_obj,
-            (
-                int(mims_image_obj.shape[1] * scale),
-                int(mims_image_obj.shape[0] * scale),
-            ),
-        )
-        if em_cropped is None:
-            mims_shape = mims_image_obj.shape
-            em_cropped = em_image_obj[
-                max(alignment.y_offset, 0) : min(
-                    alignment.y_offset + int(mims_shape[0]), em_image_obj.shape[0]
-                ),
-                max(alignment.x_offset, 0) : min(
-                    alignment.x_offset + int(mims_shape[1]), em_image_obj.shape[1]
-                ),
-            ]
-            Image.fromarray(em_cropped).save(os.path.join(save_reg_loc, f"em{"_final" if masks else ""}.png"))
-        mims_image_obj = Image.fromarray(mims_image_obj)
-        mims_image_obj.save(os.path.join(save_reg_loc, f"{isotope}{"_final" if masks else ""}.png"))
+
+        # Calculate the region of the transformed EM image that corresponds to the MIMS image
+        em_y_start = max(alignment.y_offset, 0)
+        em_y_end = min(em_y_start + mims_image_obj.shape[0], em_image_transformed.shape[0])
+        em_x_start = max(alignment.x_offset, 0)
+        em_x_end = min(em_x_start + mims_image_obj.shape[1], em_image_transformed.shape[1])
+
+        em_cropped = em_image_transformed[em_y_start:em_y_end, em_x_start:em_x_end]
+
+        # Save the transformed and cropped EM image
+        Image.fromarray(em_cropped).save(os.path.join(save_reg_loc, f"em{'_final' if masks else ''}.png"))
+
+        # Save the original MIMS image
+        Image.fromarray(mims_image_obj).save(os.path.join(save_reg_loc, f"{isotope}{'_final' if masks else ''}.png"))
+
     if masks:
-        mims_image_obj = np.array(mims_image_obj)
-        mims_y_start = max(-alignment.y_offset, 0)
-        mims_y_end = min(
-            mims_y_start + em_cropped.shape[0], mims_image_obj.shape[0]
-        )
-        mims_x_start = max(-alignment.x_offset, 0)
-        mims_x_end = min(
-            mims_x_start + em_cropped.shape[1], mims_image_obj.shape[1]
-        )
-        mims_image_obj = mims_image_obj[
-            mims_y_start:mims_y_end, mims_x_start:mims_x_end
-        ]
         em_mask = masks["em_mask"][: em_cropped.shape[0], : em_cropped.shape[1]]
-        mims_mask = masks[f"mims_mask"][
-            : em_cropped.shape[0], : em_cropped.shape[1]
-        ]
-        Image.fromarray(em_mask).save(
-            os.path.join(save_reg_loc, "em_reg_mask.tiff")
-        )
-        Image.fromarray(mims_mask).save(
-            os.path.join(save_reg_loc, "mims_reg_mask.tiff")
-        )
+        mims_mask = masks["mims_mask"][: mims_image_obj.shape[0], : mims_image_obj.shape[1]]
+        Image.fromarray(em_mask).save(os.path.join(save_reg_loc, "em_reg_mask.tiff"))
+        Image.fromarray(mims_mask).save(os.path.join(save_reg_loc, "mims_reg_mask.tiff"))
         composite_final = create_composite_mask(em_mask, mims_mask)
-        print("composite_final", composite_final.shape)
-        Image.fromarray(composite_final).save(
-            os.path.join(save_reg_loc, "composite_mask_final.png")
-        )
+        Image.fromarray(composite_final).save(os.path.join(save_reg_loc, "composite_mask_final.png"))
 
 
 def create_mask_from_shapes(image_shape, shapes):
