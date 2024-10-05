@@ -20,6 +20,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
+  "include": ["src", "public/openseadragon-svg-overlay.js"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

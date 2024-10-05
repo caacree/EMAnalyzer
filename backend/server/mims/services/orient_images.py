@@ -1,6 +1,15 @@
 import numpy as np
 from skimage.transform import estimate_transform
 import sims
+from PIL import Image
+import math
+from mims.services.concat_utils import (
+    get_concatenated_image,
+    get_autocontrast_image_path,
+)
+import cv2
+from PIL import ImageOps
+import time
 
 
 def calculate_transformation_error(tform, src_points, dst_points):
@@ -9,6 +18,53 @@ def calculate_transformation_error(tform, src_points, dst_points):
     # Calculate the error as the sum of squared differences
     error = np.sum((transformed_points - dst_points) ** 2)
     return error
+
+
+def rotate_point(point, angle, composite_image):
+    y, x = point
+    cy, cx = composite_image.height // 2, composite_image.width // 2
+    angle = math.radians(angle)
+
+    # Translate point to origin (relative to image center)
+    x -= cx
+    y -= cy
+
+    # Apply rotation matrix
+    new_x = x * math.cos(angle) - y * math.sin(angle)
+    new_y = x * math.sin(angle) + y * math.cos(angle)
+
+    # Translate point back to original coordinate system
+    new_x += cx
+    new_y += cy
+
+    # Adjust for the expanded image dimensions
+    expanded_composite = composite_image.rotate(math.degrees(angle), expand=True)
+    new_x += (expanded_composite.width - composite_image.width) // 2
+    new_y += (expanded_composite.height - composite_image.height) // 2
+
+    return [new_y, new_x]
+
+
+def calculate_translations(
+    mims_points, em_points, composite_image, rotation_degrees, flip, scale
+):
+    expanded_composite_image = composite_image.rotate(rotation_degrees, expand=True)
+
+    x_translations = []
+    y_translations = []
+    for i in range(len(mims_points)):
+        mims_pt = mims_points[i]
+        em_pt = em_points[i]
+        # 1. Rotate, then flip, then scale and see the translation from the EM point
+        mims_pt = rotate_point(mims_pt, rotation_degrees, composite_image)
+        if flip:
+            mims_pt[1] = expanded_composite_image.width - mims_pt[1]
+        mims_pt = [p * scale for p in mims_pt]
+        x_translations += [em_pt[1] - mims_pt[1]]
+        y_translations += [em_pt[0] - mims_pt[0]]
+    x_trans = sum(x_translations) / len(x_translations)
+    y_trans = sum(y_translations) / len(y_translations)
+    return [y_trans, x_trans]
 
 
 def orient_viewset(mims_imageviewset, points):
@@ -45,76 +101,170 @@ def orient_viewset(mims_imageviewset, points):
         flip = False
 
     # Extract transformation parameters
-    scale = np.sqrt(selected_tform.params[0, 0] ** 2 + selected_tform.params[1, 0] ** 2)
-    rotation_radians = np.arctan2(
-        selected_tform.params[1, 0], selected_tform.params[0, 0]
-    )
+    scale = selected_tform.scale
+    rotation_radians = selected_tform.rotation
     rotation_degrees = np.degrees(rotation_radians)
-    translation = selected_tform.params[:2, 2]
-    print(selected_tform.params)
-    print("rotation_degrees", flip, rotation_degrees, translation, scale)
+
+    # Get translation in coordinates the way we will calculate them in the rest of the app
+    composite_image = Image.fromarray(get_concatenated_image(mims_imageviewset, "32S"))
+    translation = calculate_translations(
+        mims_points, em_points, composite_image, rotation_degrees, flip, scale
+    )
 
     mims_imageviewset.flip = flip
     mims_imageviewset.rotation_degrees = rotation_degrees
-    mims_imageviewset.em_coordinates_x = translation[0]
-    mims_imageviewset.em_coordinates_y = translation[1]
-    mims_imageviewset.em_scale = scale
+    mims_imageviewset.canvas_x = translation[1]
+    mims_imageviewset.canvas_y = translation[0]
+    mims_imageviewset.pixel_size_nm = (
+        mims_imageviewset.canvas.pixel_size_nm or 5
+    ) * scale
     mims_imageviewset.save()
-    # calculate_individual_mims_translations(mims_imageviewset)
+
+    calculate_individual_mims_translations(mims_imageviewset)
     return
 
 
+def largest_inner_square(side_length, angle):
+    """Calculate the largest possible inner square side length for a given rotation angle."""
+    # Convert angle to radians
+    return side_length / (
+        abs(math.cos(math.radians(angle))) + abs(math.sin(math.radians(angle)))
+    )
+
+
 def calculate_individual_mims_translations(mims_imageviewset):
+    start = time.time()
+    # Print seconds elapsed
     mims_images = mims_imageviewset.mims_images.all()
     # Get transformation parameters
     flip = mims_imageviewset.flip
     rotation_degrees = mims_imageviewset.rotation_degrees
-    composite_translation = np.array(
-        [mims_imageviewset.em_coordinates_x, mims_imageviewset.em_coordinates_y]
+    isotope = "SE"  # mims_images[0].isotopes.all()[0]
+    composite_image = Image.fromarray(
+        get_concatenated_image(mims_imageviewset, isotope)
     )
-    scale = mims_imageviewset.em_scale
-
-    # Convert rotation to radians
-    rotation_radians = np.radians(rotation_degrees)
-
-    # Create rotation matrix
-    rotation_matrix = np.array(
-        [
-            [np.cos(rotation_radians), -np.sin(rotation_radians)],
-            [np.sin(rotation_radians), np.cos(rotation_radians)],
-        ]
+    if isotope == "32S":
+        composite_image = ImageOps.invert(composite_image)
+    if flip:
+        composite_image = composite_image.transpose(Image.FLIP_LEFT_RIGHT)
+    composite_image = composite_image.rotate(rotation_degrees, expand=True)
+    composite_image = np.array(composite_image)
+    em_image_obj = mims_imageviewset.canvas.images.first()
+    scale = mims_imageviewset.mims_images.first().pixel_size_nm / (
+        em_image_obj.pixel_size_nm or 5
     )
-
-    # Get reference point (e.g., top-left corner of the composite image)
-    mims_meta = sims.SIMS(mims_images[0].file.path).header["Image"]
-    mims_pixel_size = mims_meta["raster"] / mims_meta["width"]
-
-    min_x = min(im.header["sample x"] for im in mims_images)
-    max_y = max(im.header["sample y"] for im in mims_images)
-    reference_point = np.array([min_x, max_y])
-
+    # Load the EM image as a numpy array
+    em_image = Image.open(em_image_obj.file.path)
+    em_image_array = np.array(em_image)
+    scaled_em = cv2.resize(
+        em_image_array,
+        (int(em_image_array.shape[1] / scale), int(em_image_array.shape[0] / scale)),
+    )
     # Calculate and store translations for each MIMS image
     for mims_image in mims_images:
-        # Get image position
-        x, y = mims_image.header["sample x"], mims_image.header["sample y"]
-        position = np.array([x, y])
-
-        # Calculate relative position to reference point
-        relative_position = (position - reference_point) * 1000 / mims_pixel_size
-
-        # Apply flip if necessary
+        filename = mims_image.file.name.split("/")[-1].split(".")[0]
+        roi = filename.split("_")[-1]
+        print(roi, "time1", time.time() - start)
+        # Load the MIMS image for the isotope and load as PIL image
+        img_orig = get_autocontrast_image_path(mims_image, isotope)
+        img_orig = Image.open(img_orig)
+        if isotope == "32S":
+            img_orig = ImageOps.invert(img_orig)
+        img = img_orig.copy()
+        # Apply the flip and rotation if necessary to it
+        img = img.rotate(-rotation_degrees, expand=True)
         if flip:
-            relative_position[0] = -relative_position[0]
+            img = img.transpose(Image.FLIP_LEFT_RIGHT)
+        img_array = np.array(img)
 
-        # Apply rotation and scaling
-        transformed_position = scale * rotation_matrix.dot(relative_position)
+        # Calculate the center of the image
+        center_x, center_y = img_array.shape[1] // 2, img_array.shape[0] // 2
 
-        # Calculate final translation
-        translation = composite_translation + transformed_position
+        # Calculate the cropping box
+        largest_inner_square_side = int(
+            largest_inner_square(img_orig.width, rotation_degrees)
+        )
+        start_x = center_x - largest_inner_square_side // 2
+        start_y = center_y - largest_inner_square_side // 2
+        end_x = center_x + largest_inner_square_side // 2
+        end_y = center_y + largest_inner_square_side // 2
 
-        # Store the translation for this MIMS image
-        mims_image.em_coordinates_x = translation[0]
-        mims_image.em_coordinates_y = translation[1]
+        # Crop the image to the largest inner square
+        cropped_img_array = img_array[start_y:end_y, start_x:end_x]
+        orig_cropped_img_array_shape = cropped_img_array.shape
+
+        # Then find the image in the composite image
+        result = cv2.matchTemplate(composite_image, img_array, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+        # Now from this approximation, find a closer match in the actual EM image
+        # Find the original EM location of the MIMS image
+        mims_y = mims_imageviewset.canvas_y + max_loc[1] * scale
+        mims_x = mims_imageviewset.canvas_x + max_loc[0] * scale
+        mims_scaled_shape = np.array(img_orig).shape
+        em_orig_shape = em_image_array.shape
+        # Skip if sufficiently far outside of the known EM bounds
+        approx_em_loc = [mims_y, mims_x]
+        if (
+            approx_em_loc[0] < -mims_scaled_shape[0]
+            or approx_em_loc[0] > em_orig_shape[0] + mims_scaled_shape[0]
+            or approx_em_loc[1] < -mims_scaled_shape[1]
+            or approx_em_loc[1] > em_orig_shape[1] + mims_scaled_shape[1]
+        ):
+            print("Out of bounds: ", approx_em_loc, em_orig_shape)
+            mims_image.status = "NO_CELLS"
+            mims_image.save()
+            continue
+        print("Seems in bounds:", approx_em_loc, em_orig_shape)
+        # Then scale it down
+        mims_y_scaled = mims_y / scale
+        mims_x_scaled = mims_x / scale
+        crop_size = int(img_array.shape[0] * 1.3)
+        crop_y_start = max(mims_y_scaled - crop_size * 0.5, 0)
+        crop_y_end = min(mims_y_scaled + (crop_size * 1.5), scaled_em.shape[0])
+        crop_x_start = max(mims_x_scaled - (crop_size * 0.5), 0)
+        crop_x_end = min(mims_x_scaled + (crop_size * 1.5), scaled_em.shape[1])
+        scaled_em_crop = scaled_em[
+            int(crop_y_start) : int(crop_y_end), int(crop_x_start) : int(crop_x_end)
+        ]
+        y_size_limit = int(scaled_em.shape[0] - mims_y_scaled)
+        if (y_size_limit) < cropped_img_array.shape[0]:
+            if crop_y_start == 0:
+                cropped_img_array = cropped_img_array[-y_size_limit:, :]
+            else:
+                cropped_img_array = cropped_img_array[:y_size_limit, :]
+        x_size_limit = int(scaled_em.shape[1] - mims_x_scaled)
+        if (x_size_limit) < cropped_img_array.shape[1]:
+            if crop_x_start == 0:
+                cropped_img_array = cropped_img_array[:, -x_size_limit:]
+            else:
+                cropped_img_array = cropped_img_array[:, :x_size_limit]
+        # Now find the MIMS image in the crop
+        # These 2 calls take ~0.3 seconds
+        if cropped_img_array.shape[0] == 0 or cropped_img_array.shape[1] == 0:
+            mims_image.status = "NO_CELLS"
+            mims_image.save()
+            continue
+        result = cv2.matchTemplate(
+            scaled_em_crop, cropped_img_array, cv2.TM_CCOEFF_NORMED
+        )
+        _, _, _, max_loc = cv2.minMaxLoc(result)
+        adjustment = (img_array.shape[0] - orig_cropped_img_array_shape[0]) // 2
+        scaled_cropped_em_y_start = max(max_loc[1] - adjustment, 0)
+        scaled_em_y_start = int(crop_y_start + scaled_cropped_em_y_start)
+        em_y_start = int(scaled_em_y_start * scale)
+        scaled_cropped_em_x_start = max(max_loc[0] - adjustment, 0)
+        scaled_em_x_start = int(crop_x_start + scaled_cropped_em_x_start)
+        em_x_start = int(scaled_em_x_start * scale)
+
+        mims_image.alignments.all().delete()
+        mims_image.alignments.create(
+            x_offset=em_x_start,
+            y_offset=em_y_start,
+            flip_hor=flip,
+            rotation_degrees=rotation_degrees,
+            scale=scale,
+            status="GUESS",
+        )
+        mims_image.status = "NEED_USER_ALIGNMENT"
         mims_image.save()
-
     return

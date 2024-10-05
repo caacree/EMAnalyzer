@@ -1,0 +1,60 @@
+baseDirectories = [
+  "D:/Chris/MIMS_STUFF/pipeline_outputs_04072024/outputs/",
+  "D:/Chris/MIMS_STUFF/pipeline_outputs_05072024/outputs/",
+  "D:/Chris/MIMS_STUFF/pipeline_outputs_06072024/outputs/"
+];
+
+for (j = 0; j < baseDirectories.length; j++) {
+  baseDirectory = baseDirectories[j];
+  folders = getFileList(baseDirectory); // Get all child folders
+
+  for (i = 0; i < folders.length; i++) {
+    folder = baseDirectory + folders[i] + "/registration"; 
+    if (File.exists(folder + "/em_final.png") && 
+        File.exists(folder + "/em_reg_mask.tiff") && 
+        File.exists(folder + "/mims_reg_mask.tiff") && 
+        File.exists(folder + "/13C12C_ratio_final.tiff")) {
+      
+      // Set file paths
+      emPath = folder + "/em_reg_mask.tiff";
+      mimsPath = folder + "/mims_reg_mask.tiff";
+      ratioPath = folder + "/13C12C_ratio_final.tiff";
+      transformPath = folder + "/mims_to_em_transform.txt";
+      inverseTransformPath = folder + "/em_to_mims_transform.txt";
+      
+      // Open the source and target images for registration
+      open(emPath); 
+      selectImage("em_reg_mask.tiff"); 
+      open(mimsPath); 
+      selectImage("mims_reg_mask.tiff"); 
+
+      // Perform bUnwarpJ registration and save transformation
+      run("bUnwarpJ", "source_image=mims_reg_mask.tiff target_image=em_reg_mask.tiff registration=Accurate image_subsample_factor=0 initial_deformation=[Very Coarse] final_deformation=Fine divergence_weight=0 curl_weight=0 landmark_weight=0 image_weight=1 consistency_weight=10 stop_threshold=0.01 save_transformations save_direct_transformation=" + transformPath + " save_inverse_transformation=" + inverseTransformPath);
+    
+      // Close the registered source image
+      selectImage("Registered Source Image");
+      run("Close");
+      while (nImages > 0) { 
+        selectImage(nImages); 
+        close(); 
+      } 
+      
+      // Apply the transformation to the ratio image
+      open(emPath); 
+      selectImage("em_reg_mask.tiff"); 
+      open(ratioPath); 
+      selectImage("13C12C_ratio_final.tiff"); 
+      call("bunwarpj.bUnwarpJ_.loadElasticTransform", transformPath, "em_reg_mask.tiff", "13C12C_ratio_final.tiff");
+
+      // Save the unwarped ratio image
+      unwarpedPath = folder + "/13C12C_ratio_unwarped.tiff"; 
+      saveAs("Tiff", unwarpedPath);
+      
+      // Close all open images
+      while (nImages > 0) { 
+        selectImage(nImages); 
+        close(); 
+      } 
+    }
+  }
+}

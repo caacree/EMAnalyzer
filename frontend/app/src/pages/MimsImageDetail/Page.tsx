@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState } from "react";
-import { Link, useParams } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/api";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/shared/ui/tabs";
 import OpenSeaDragon from "@/components/shared/OpenSeaDragon";
@@ -10,45 +10,66 @@ import MimsOpenSeaDragon from "@/components/shared/MimsOpenSeaDragon";
 import { Slider } from "@/components/shared/ui/slider";
 import { Checkbox } from "../../components/shared/ui/checkbox";
 import { TrashIcon } from "lucide-react";
+import RegistrationPage from "./RegistrationPage";
 
+const updateAlignmentStatus = async (
+  mimsImageId: string, savedEmPos: any, rotation: number, flip: boolean
+) => {
+  const post = {
+    zoom: savedEmPos?.zoom, 
+    xOffset: savedEmPos?.xOffset, 
+    yOffset: savedEmPos?.yOffset, 
+    rotation, 
+    flip
+  };
+  return api.post(`mims_image/${mimsImageId}/set_alignment/`, post);
+}
 const fetchMimsImageDetail = async (id: string) => {
-  const res = await api.get(`mims_images/${id}/`);
+  const res = await api.get(`mims_image/${id}/`);
   return res.data;
 };
 
 const MimsImage = () => {
   const [openseadragonOptions, setOpenseadragonOptions] = useState<any>({defaultZoomLevel: 1});
   const [openseadragonEmViewerPos, setOpenseadragonEmViewerPos] = useState<any>({});
+  const [savedEmPos, setSavedEmPos] = useState<any | null>(null);
   const [rotationSliderValue, setRotationSliderValue] = useState(0);
   const [mimsflip_hor, setMimsflip_hor] = useState(false);
-  const [selectedAlignment, setSelectedAlignment] = useState(0);
-  const [selectedIsotope, setSelectedIsotope] = useState(0);
+  const [selectedAlignment, setSelectedAlignment] = useState<string>('');
+  const [selectedIsotope, setSelectedIsotope] = useState("32S");
   const [selectedEmPoints, setSelectedEmPoints] = useState<any | null>([]);
   const [selectedMimsPoints, setSelectedMimsPoints] = useState<any | null>([]);
   const [highlightedPointIndex, setHighlightedPointIndex] = useState<number | null>(null);
-  const [isSelectingPoints, setIsSelectingPoints] = useState<boolean>(false);
 
+
+  const queryClient = useQueryClient();
+  const navigate = useNavigate({ from: window.location.pathname });
   const { mimsImageId } = useParams({ strict: false });
   const { data: mimsImage, isLoading } = useQuery({
     queryKey: ['mims_image', mimsImageId], 
     queryFn: () => fetchMimsImageDetail(mimsImageId as string)
   });
+  
 
-  const selectAlignment = (alignmentIndex: number) => {
-    setSelectedAlignment(alignmentIndex);
-    setRotationSliderValue(alignment.rotation_degrees);
-    setMimsflip_hor(alignment.flip_hor)
-    setOpenseadragonEmViewerPos({
-      zoom: alignment.scale,
-      xOffset: alignment.x_offset,
-      yOffset: alignment.y_offset,
-    });
+  const selectAlignment = (alignmentId: string) => {
+    setSelectedAlignment(alignmentId);
+
+    const alignment = mimsImage?.alignments?.find((al: any) => al.id == alignmentId)
+    if (alignment) {
+      setRotationSliderValue(alignment?.rotation_degrees);
+      setMimsflip_hor(alignment?.flip_hor)
+      setOpenseadragonEmViewerPos({
+        zoom: 1/alignment?.scale,
+        xOffset: alignment?.x_offset,
+        yOffset: alignment?.y_offset,
+      });
+    }
   }
   useEffect(() => {
-    if (mimsImage?.alignments.length) {
-      selectAlignment(0);
+    if (mimsImage?.alignments?.length) {
+      selectAlignment(mimsImage?.alignments[0].id);
     }
-    const defaultZoomLevel = mimsImage?.pixel_size_nm / mimsImage?.image_set.em_image.pixel_size_nm
+    const defaultZoomLevel = mimsImage?.pixel_size_nm / mimsImage?.image_set?.canvas.pixel_size_nm
     if (openseadragonOptions.defaultZoomLevel !== defaultZoomLevel && mimsImage?.pixel_size_nm && defaultZoomLevel < 10000) {
       setOpenseadragonOptions({defaultZoomLevel});
     }
@@ -61,66 +82,86 @@ const MimsImage = () => {
   const updateSelectedEmPoints = (pos: any) => {
     setSelectedEmPoints((prevPoints: any[]) => [...prevPoints, pos]);
   };
-  const emPos = {
-    zoom: 0.070629169167,
+  
+  const handleNoCells = () => {
+    api.post(`mims_image/${mimsImageId}/no_cells/`).then(() => {
+      queryClient.invalidateQueries();
+      navigate({ to: `/canvas/${mimsImage?.image_set?.canvas.id}` });
+    })
+  }
+  
+  if (["AWAITING_REGISTRATION", "REGISTERING", "DEWARP PENDING"].indexOf(mimsImage?.status) !== -1 && mimsImage?.alignments?.length) {
+    return <RegistrationPage />;
   }
   return (
     <div className="flex flex-col w-full m-4">
       <div className="flex gap-8">
-        <Link to={`/em_image/${mimsImage.image_set.em_image.id}`}>Back to EM Image</Link>
-        <div>{mimsImage.file.split('/').pop()}</div>
+        <Link to={`/canvas/${mimsImage?.image_set?.canvas.id}`}>Back to EM Image</Link>
+        <div>{mimsImage?.file?.split('/').pop()}</div>
       </div>
       <div className="mt-2 flex gap-5 grow">
         <div className="flex grow flex-col">
           <div className="flex gap-4 items-center mb-2">Suggested Alignments: 
             <Tabs defaultValue={selectedAlignment}>
               <TabsList className="flex space-x-1">
-                {mimsImage.alignments?.map((alignment: any, alignmentIndex: number) => (
-                  <TabsTrigger key={alignmentIndex} value={alignmentIndex} onClick={() => selectAlignment(alignmentIndex)}>
+                {mimsImage?.alignments?.map((alignment: any, alignmentIndex: number) => (
+                  <TabsTrigger key={alignment.id} value={alignment.id} onClick={() => selectAlignment(alignment.id)}>
                     {alignmentIndex}
                   </TabsTrigger>
                 ))}
               </TabsList>
             </Tabs>
+            <button onClick={() => updateAlignmentStatus(
+                mimsImage?.id, savedEmPos, rotationSliderValue, mimsflip_hor
+              ).then(() => history.back())}
+            >Correct</button>
+
+            <div><button onClick={handleNoCells}>No cells</button></div>
           </div>
-          <div className="w-[600px] h-[700px]">
-            <OpenSeaDragon 
-              iiifContent={mimsImage.image_set.em_image.dzi_file} 
-              options={openseadragonOptions} 
-              viewerPos={emPos}
-              onClick={updateSelectedEmPoints}
-            />
+          <div>{mimsImage?.alignments?.find((al: any) => al.id == selectedAlignment)?.status}</div>
+          <div className="flex flex-col">
+            <div className="w-[600px] h-[600px]">
+              <OpenSeaDragon 
+                iiifContent={`http://localhost:8000/${mimsImage?.em_dzi}`}
+                options={openseadragonOptions}
+                viewerPos={openseadragonEmViewerPos}
+                onClick={updateSelectedEmPoints}
+                setSavedEmPos={setSavedEmPos}
+              />
+          </div>
           </div>
         </div>
         <div className="flex grow">
           <Tabs defaultValue={selectedIsotope}>
             <TabsList className="flex space-x-1">
-              {mimsImage.isotopes?.map((isotope: any, isotopeIndex: number) => (
-                <TabsTrigger key={isotopeIndex} value={isotopeIndex} onClick={() => setSelectedIsotope(isotopeIndex)}>
+              {mimsImage.isotopes?.map((isotope: any) => (
+                <TabsTrigger key={isotope.name} value={isotope.name} onClick={() => setSelectedIsotope(isotope.name)}>
                   {isotope.name}
                 </TabsTrigger>
               ))}
             </TabsList>
-          {mimsImage.isotopes?.map((isotope: any, isotopeIndex: number) => (
-            <TabsContent key={isotopeIndex} value={isotopeIndex}>
-              <div className="flex items-center justify-between">
-                <div className="flex gap-2 items-center">
-                  Flip: <Checkbox checked={mimsflip_hor} onCheckedChange={(checked: boolean) => setMimsflip_hor(checked)} />
+          {mimsImage.isotopes?.map((isotope: any) => {
+            const options = {
+              degrees: Math.round(rotationSliderValue),
+              flipped: mimsflip_hor
+            }
+            return (
+              <TabsContent key={isotope.name} value={isotope.name}>
+                <div className="flex items-center justify-between">
+                  <div className="flex gap-2 items-center">
+                    Flip: <Checkbox checked={mimsflip_hor} onCheckedChange={(checked: boolean) => setMimsflip_hor(checked)} />
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    Rotation:<Slider value={[rotationSliderValue]} min={0} max={360} onValueChange={setRotationSliderValue} />{rotationSliderValue}&deg;
+                  </div>
                 </div>
-                <div className="flex gap-2 items-center">
-                  Rotation:<Slider value={[rotationSliderValue]} min={0} max={360} onValueChange={setRotationSliderValue} />{rotationSliderValue}&deg;
-                </div>
-              </div>
-              <MimsOpenSeaDragon 
-                url={isotope.url} 
-                options={{
-                  degrees: Math.round(rotationSliderValue),
-                  flipped: mimsflip_hor
-                }}
-                onClick={(pos: any) => setSelectedMimsPoints([...selectedMimsPoints, pos])}
-              />
-            </TabsContent>
-          ))}
+                <MimsOpenSeaDragon 
+                  url={isotope.url} 
+                  options={options}
+                  // onClick={(pos: any) => setSelectedMimsPoints([...selectedMimsPoints, pos])}
+                />
+              </TabsContent>
+          )})}
           </Tabs>
         </div>
       </div>

@@ -52,20 +52,25 @@ class MimsImageSetCanvasDetailSerializer(serializers.ModelSerializer):
         )
         # Get all the images in the directory
         composite_images = []
+        dzi_folders = None
         if Path(composites_dir).exists():
             dzi_folders = [f for f in os.listdir(composites_dir) if f.endswith(".dzi")]
         # Make an object where the key is the isotope name and the value is the url
-        composite_images = {
-            folder.split(".")[0]: os.path.join(
-                settings.MEDIA_URL,
-                "mims_image_sets",
-                str(obj.id),
-                "composites",
-                "isotopes",
-                folder,
-            )
-            for folder in dzi_folders
-        }
+        composite_images = (
+            {
+                folder.split(".")[0]: os.path.join(
+                    settings.MEDIA_URL,
+                    "mims_image_sets",
+                    str(obj.id),
+                    "composites",
+                    "isotopes",
+                    folder,
+                )
+                for folder in dzi_folders
+            }
+            if dzi_folders
+            else None
+        )
         return composite_images
 
 

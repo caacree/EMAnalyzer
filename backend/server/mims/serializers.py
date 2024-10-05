@@ -19,11 +19,13 @@ class IsotopeImageSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         mims_image = self.context.get("mims_image")
         mims_image_set = mims_image.image_set
+        filename = os.path.basename(mims_image.file.name).split(".")[0]
 
         file_path = os.path.join(
-            "mims_images",
+            "mims_image_sets",
             str(mims_image_set.id),
-            str(mims_image.id),
+            "mims_images",
+            filename,
             "isotopes",
             obj.name + "_autocontrast.png",
         )
@@ -111,6 +113,8 @@ class MIMSImageSerializer(serializers.ModelSerializer):
     alignments = MIMSAlignmentSerializer(
         many=True, read_only=True
     )  # Include alignments
+    em_dzi = serializers.SerializerMethodField()
+    registration = serializers.SerializerMethodField()
 
     class Meta:
         model = MIMSImage
@@ -124,6 +128,8 @@ class MIMSImageSerializer(serializers.ModelSerializer):
             "updated_at",
             "isotopes",
             "alignments",
+            "em_dzi",
+            "registration",
         ]
 
     def get_isotopes(self, obj):
@@ -133,3 +139,28 @@ class MIMSImageSerializer(serializers.ModelSerializer):
             many=True,
             context={"request": self.context.get("request"), "mims_image": obj},
         ).data
+
+    def get_em_dzi(self, obj):
+        canvas = obj.image_set.canvas
+        em_image = canvas.images.first()
+        if em_image:
+            return em_image.dzi_file.url
+
+    def get_registration(self, obj):
+        if obj.status != "AWAITING_REGISTRATION" and obj.status != "DEWARP PENDING":
+            return None
+        isotopes = obj.isotopes.all()
+        filepath = Path(obj.file.name)
+        base = os.path.join(
+            settings.MEDIA_URL, filepath.parent, filepath.stem, "registration"
+        )
+        suffix = "_final" if obj.status == "DEWARP PENDING" else ""
+
+        urls = {
+            "em_url": os.path.join(base, f"em{suffix}.png"),
+        }
+        for isotope in isotopes:
+            urls[f"{isotope.name}_url"] = os.path.join(
+                base, f"{isotope.name}{suffix}.png"
+            )
+        return urls

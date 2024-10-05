@@ -16,14 +16,17 @@ const Dashboard = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const pixel_size_nm = 5;
     if (friendlyName) {
       const formData = new FormData();
       formData.append('name', friendlyName);
+      formData.append('pixel_size_nm', pixel_size_nm.toString());
       createCanvas(formData).then((res) => {
         if (file) {
           const imageFormData = new FormData();
           imageFormData.append('file', file);
           imageFormData.append('canvas', res.id);
+          imageFormData.append('pixel_size_nm', pixel_size_nm.toString());
           return createImage(imageFormData).then((res: any) => {
             console.log(res);
           });

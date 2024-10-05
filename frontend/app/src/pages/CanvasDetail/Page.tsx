@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Route, useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { Link, Route, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import React, { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/api";
@@ -9,7 +9,7 @@ import MimsOpenSeaDragon from "../../components/shared/MimsOpenSeaDragon";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/shared/ui/tabs";
 import { Checkbox } from "../../components/shared/ui/checkbox";
 import { Slider } from "../../components/shared/ui/slider";
-import { TrashIcon, XCircleIcon } from "lucide-react";
+import { XCircleIcon } from "lucide-react";
 import { postImageSetPoints } from "../../api/api";
 
 const fetchCanvasDetail = async (id: string) => {
@@ -98,14 +98,17 @@ const CanvasDetail = () => {
     postImageSetPoints(mimsImageSet, points)
   }
 
-  const handleDeleteMimsSet = (imageSetId: string) => {
-    api.delete(`/mims_image_set/${imageSetId}/`).then(() => queryClient.invalidateQueries());
-  }
+  
 
   const selectedMimsSet = canvas?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSet);
   return (
     <div className="w-full flex flex-col ml-10 gap-5">
-      <h2 className="flex gap-20"><span>Canvas: {canvas.name}</span><span>{selectedMimsSet ? `Selected Mims Image Set: ${selectedMimsSet.id}` : null}</span></h2>
+      <div className="flex gap-20">
+        <Link to={`/canvas/${canvas.id}`}>
+          <h2 className="flex gap-20">Canvas: {canvas.name}</h2>
+        </Link>
+        <div>{selectedMimsSet ? `Selected Mims Image Set: ${selectedMimsSet.id}` : null}</div>
+      </div>
       {selectedMimsSet ? (
         <div>
           <div className="flex gap-2 items-center">
@@ -127,9 +130,9 @@ const CanvasDetail = () => {
                   MIMS {index + 1}: {points.mims[index]?.x.toFixed(2)}, {points.mims[index]?.y.toFixed(2)}
                 </div>
                 <XCircleIcon onClick={() => {
-                  setPoints(prev => ({
-                    em: prev.em.filter((_, i) => i !== index),
-                    mims: prev.mims.filter((_, i) => i !== index)
+                  setPoints((prev: any) => ({
+                    em: prev.em.filter((_:any, i:any) => i !== index),
+                    mims: prev.mims.filter((_:any, i:any) => i !== index)
                   }));
                 }} className="cursor-pointer" />
               </div>
@@ -150,11 +153,9 @@ const CanvasDetail = () => {
               <>
                 <div>MIMS Image sets</div>
                 {canvas?.mims_sets?.map((mimsImageSet: any) => (
-                  <><MIMSImageSet key={mimsImageSet.id} mimsImageSet={mimsImageSet} onSelect={(newId: string) => {
+                    <MIMSImageSet key={mimsImageSet.id} mimsImageSet={mimsImageSet} onSelect={(newId: string) => {
                     navigate({ search: (prev: any) => ({ ...prev, mimsImageSet: newId }) });
-                  }} /><button onClick={() => handleDeleteMimsSet(mimsImageSet.id)}>
-                  <TrashIcon />
-                </button></>
+                  }} />
                 ))}
               </>
             ) : null}
@@ -168,14 +169,15 @@ const CanvasDetail = () => {
                       </TabsTrigger>
                     ))}
                   </TabsList>
-                  {Object.keys(selectedMimsSet.composite_images).map((isotope: any) => (
+                  {Object.keys(selectedMimsSet.composite_images).map((isotope: any) => {
+                    return (
                     <TabsContent key={isotope} value={isotope}>
                       <div className="flex items-center justify-between">
                         <div className="flex gap-2 items-center">
                           Flip: <Checkbox checked={mimsOptions.flipped} onCheckedChange={(checked: boolean) => setMimsOptions({flipped: checked, degrees: mimsOptions.degrees})} />
                         </div>
                         <div className="flex gap-2 items-center">
-                          Rotation:<Slider value={[mimsOptions.degrees]} min={0} max={360} onValueChange={(val) => setMimsOptions({flipped: mimsOptions.flipped, degrees: Math.round(val)})} />{mimsOptions.degrees}&deg;
+                          Rotation:<Slider value={[mimsOptions.degrees]} min={0} max={360} onValueChange={(val) => setMimsOptions({flipped: mimsOptions.flipped, degrees: Math.round(val[0])})} />{mimsOptions.degrees}&deg;
                         </div>
                       </div>
                       <MimsOpenSeaDragon 
@@ -186,7 +188,7 @@ const CanvasDetail = () => {
                         allowZoom
                       />
                     </TabsContent>
-                  ))}
+                  )})}
                 </Tabs>
               </div>
             ) : null}

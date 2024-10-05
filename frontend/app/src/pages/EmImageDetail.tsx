@@ -63,7 +63,10 @@ const EMImageDetail = () => {
           <div>MIMS Image sets</div>
           {image?.mims_sets?.map((mimsImageSet: any) => (
             <div>
-              <div>Image set</div>
+              <div className="flex gap-1">
+                <div>Image set</div>
+                <button>{mimsImageSet?.canvas_x && mimsImageSet?.canvas_y ? 'Aligned' : 'Unaligned'}</button>
+              </div>
               {mimsImageSet.mims_images?.map((mims: any) => (
                 <div>
                   <div>File: {mims.file}</div>

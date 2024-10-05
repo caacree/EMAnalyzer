@@ -27,9 +27,12 @@ class MIMSImageSet(CanvasObj):
 
     def delete(self, *args, **kwargs):
         # Delete the media directory with the image files
-        shutil.rmtree(
+        if os.path.exists(
             os.path.join(settings.MEDIA_ROOT, "mims_image_sets", str(self.id))
-        )
+        ):
+            shutil.rmtree(
+                os.path.join(settings.MEDIA_ROOT, "mims_image_sets", str(self.id))
+            )
         super().delete(*args, **kwargs)
 
     def get_canvas_composite(self, isotope):

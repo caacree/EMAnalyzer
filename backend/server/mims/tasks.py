@@ -1,11 +1,21 @@
 from celery import shared_task
 from django.apps import apps
 from django.conf import settings
+from django.shortcuts import get_object_or_404
+from mims.services.registration_utils import (
+    create_composite_mask,
+    create_mask_from_shapes,
+    create_registration_images,
+    scale_between_masks,
+    test_mask_iou,
+)
 from mims.services.concat_utils import get_concatenated_image
-from mims.models import Isotope
+from mims.models import Isotope, MIMSAlignment, MIMSImage
 from skimage import exposure
 import sims
 import os
+from pathlib import Path
+import cv2
 from PIL import Image
 from scipy import ndimage
 from django.conf import settings
@@ -13,7 +23,7 @@ import numpy as np
 from pystackreg import StackReg
 from pystackreg.util import to_uint16
 import pyvips
-from mims.services import create_alignment_estimates
+from mims.services import create_alignment_estimates, unwarp_image
 
 
 @shared_task
@@ -69,7 +79,7 @@ def preprocess_mims_image_set(mims_image_set_id):
             c12_im = np.asarray(Image.open(os.path.join(isotope_image_dir, "12C.png")))
             c13_im = np.asarray(Image.open(os.path.join(isotope_image_dir, "13C.png")))
             ratio = Image.fromarray(
-                (np.divide(c13_im, c12_im) * 10000).astype(np.uint8)
+                (np.divide(c13_im, c12_im) * 10000).astype(np.uint16)
             )
             ratio.save(os.path.join(isotope_image_dir, "13C12C_ratio.png"))
         if "15N 12C" in all_species and "14N 12C" in all_species:
@@ -80,7 +90,7 @@ def preprocess_mims_image_set(mims_image_set_id):
                 Image.open(os.path.join(isotope_image_dir, "14N 12C.png"))
             )
             ratio = Image.fromarray(
-                (np.divide(n15_im, n14_im) * 10000).astype(np.uint8)
+                (np.divide(n15_im, n14_im) * 10000).astype(np.uint16)
             )
             ratio.save(os.path.join(isotope_image_dir, "15N14N_ratio.png"))
         mims_image.status = "PREPROCESSED"
@@ -108,11 +118,20 @@ def preprocess_mims_image_set(mims_image_set_id):
         id_url = os.path.join("http://localhost:8000/media", relative_dir)
 
         # Save the DZI file directly to the target directory
-        img.dzsave(
-            os.path.join(output_dir, isotope + ".dzi"),
-            id=id_url,
-            layout=pyvips.enums.ForeignDzLayout.IIIF3,
-        )
+        if img.width <= 512 and img.height <= 512:
+            img.dzsave(
+                os.path.join(output_dir, isotope + ".dzi"),
+                id=id_url,
+                tile_size=512,
+                depth="one",
+                layout=pyvips.enums.ForeignDzLayout.IIIF3,
+            )
+        else:
+            img.dzsave(
+                os.path.join(output_dir, isotope + ".dzi"),
+                id=id_url,
+                layout=pyvips.enums.ForeignDzLayout.IIIF3,
+            )
 
     print("MIMS image set preprocessing completed")
 
@@ -157,3 +176,109 @@ def estimate_mims_alignment(mims_image_id):
         create_alignment_estimates(mims_image)
         mims_image.status = "ESTIMATED_ALIGNMENTS_INITIAL"
         mims_image.save()
+
+
+@shared_task
+def unwarp_image_task(mims_image_obj_id):
+    mims_image = get_object_or_404(MIMSImage, pk=mims_image_obj_id)
+    mims_image.status = "DEWARPING"
+    mims_image.save()
+    unwarp_image(mims_image)
+    mims_image.status = "DEWARPED_ALIGNED"
+    mims_image.save()
+
+
+@shared_task
+def create_registration_images_task(mims_image_obj_id):
+    mims_image = get_object_or_404(MIMSImage, pk=mims_image_obj_id)
+    create_registration_images(mims_image)
+    mims_image.status = "AWAITING_REGISTRATION"
+    mims_image.save()
+
+
+@shared_task
+def register_images(mims_image_obj_id, mims_shapes, em_shapes):
+    mims_image = get_object_or_404(MIMSImage, pk=mims_image_obj_id)
+
+    # Update the alignment in the database
+    old_alignment = mims_image.alignments.filter(status="USER_ROUGH_ALIGNMENT").first()
+
+    # Load the original images
+    mims_path = Path(mims_image.file.path)
+    reg_loc = os.path.join(mims_path.parent, mims_path.stem, "registration")
+    em_img = np.array(Image.open(os.path.join(reg_loc, "em.png")))
+    mims_img = np.array(Image.open(os.path.join(reg_loc, "32S.png")))
+
+    # Create binary masks from polygons
+    em_mask = create_mask_from_shapes(em_img.shape[:2], em_shapes)
+    mims_mask_orig = create_mask_from_shapes(mims_img.shape[:2], mims_shapes)
+    Image.fromarray(em_mask).save(os.path.join(reg_loc, "em_mask_orig.png"))
+    Image.fromarray(mims_mask_orig).save(os.path.join(reg_loc, "mims_mask_orig.png"))
+    composite_mask = create_composite_mask(em_mask, mims_mask_orig)
+    Image.fromarray(composite_mask).save(
+        os.path.join(reg_loc, "composite_mask_orig.png")
+    )
+    orig_iou, orig_translation = test_mask_iou(em_mask, mims_mask_orig)
+    # Make an image with both masks, where one set is
+    # first test the scale if needed: take furthest points and calculate distances
+    # Get bounding box of 1s for each mask
+    furthest_points_scale = scale_between_masks(em_mask, mims_mask_orig)
+    # Scale the mims mask up by avg_dist
+    mims_mask_test = cv2.resize(
+        mims_mask_orig,
+        (
+            int(mims_mask_orig.shape[1] * furthest_points_scale),
+            int(mims_mask_orig.shape[0] * furthest_points_scale),
+        ),
+    )
+    scaled_iou, scaled_translation = test_mask_iou(em_mask, mims_mask_test)
+
+    mims_to_use = mims_mask_orig
+    translation_to_use = orig_translation
+    if scaled_iou > orig_iou:
+        mims_to_use = mims_mask_test
+        translation_to_use = scaled_translation
+    em_mask_padding = max(abs(translation_to_use[0]), abs(translation_to_use[1]))
+    em_padded_y_start = em_mask_padding + translation_to_use[1]
+    em_padded_y_end = em_padded_y_start + mims_to_use.shape[0]
+    em_padded_x_start = em_mask_padding + translation_to_use[0]
+    em_padded_x_end = em_padded_x_start + mims_to_use.shape[1]
+    em_mask_translated = np.pad(em_mask, em_mask_padding, mode="constant")[
+        em_padded_y_start:em_padded_y_end, em_padded_x_start:em_padded_x_end
+    ]
+    # Then see if rotating helps at all: Get the IOU,
+    # and then for each of -5 to 5 degrees, rotate the mims mask, run matchTemplate to align them, and get the IOU
+    # Get the IOU of the two masks
+
+    mims_image.alignments.filter(status="FINAL_TWEAKED_ONE").delete()
+    scale = old_alignment.scale
+    if scaled_iou > orig_iou:
+        scale *= furthest_points_scale
+    alignment = MIMSAlignment.objects.create(
+        mims_image=mims_image,
+        x_offset=old_alignment.x_offset,
+        y_offset=old_alignment.y_offset,
+        rotation_degrees=old_alignment.rotation_degrees,
+        flip_hor=old_alignment.flip_hor,
+        scale=scale,
+        status="FINAL_TWEAKED_ONE",
+    )
+    alignment.x_offset += translation_to_use[0]
+    alignment.y_offset += translation_to_use[1]
+    alignment.save()
+    # Optionally create and save registration images
+    composite_mask = create_composite_mask(em_mask, mims_mask_orig)
+    Image.fromarray(composite_mask).save(
+        os.path.join(reg_loc, "composite_mask_translated.png")
+    )
+
+    create_registration_images(
+        mims_image,
+        masks={"em_mask": em_mask_translated, "mims_mask": mims_to_use},
+    )
+    mims_image = get_object_or_404(MIMSImage, pk=mims_image_obj_id)
+    mims_image.status = "DEWARPING"
+    mims_image.save()
+    unwarp_image(mims_image)
+    mims_image.status = "DEWARPED_ALIGNED"
+    mims_image.save()

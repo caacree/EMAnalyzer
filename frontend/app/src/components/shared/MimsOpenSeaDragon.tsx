@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import OpenSeadragon from 'openseadragon';
 
-const OpenSeaDragon = ({ url, options, onClick, iiifContent, allowZoom = false, points }: {url?: string; options?: object; onClick?: any; iiifContent?: string, allowZoom?: boolean; points: any[]}) => {
+const OpenSeaDragon = ({ url, options, onClick, iiifContent, allowZoom = false, points }: {url?: string; options?: object; onClick?: any; iiifContent?: string, allowZoom?: boolean; points?: any[]}) => {
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const osdViewerRef = useRef<OpenSeadragon.Viewer | null>(null);
 
@@ -44,17 +44,14 @@ const OpenSeaDragon = ({ url, options, onClick, iiifContent, allowZoom = false, 
           checkResize: false,
         };
       })
-
       osdViewerRef.current = OpenSeadragon({
         prefixUrl: '/openseadragon/images/',
         id: viewerRef.current.id,
-        tileSources: iiifContent ? [iiifContent] : ({
+        tileSources: iiifContent ? [{tileSource: iiifContent} as any] : ({
           type: 'image',
-          url
+          url,
         }),
         overlays,
-        minZoomLevel: allowZoom ? undefined : 1,
-        maxZoomLevel: allowZoom ? undefined : 1,
         showNavigator: false,
         showZoomControl: allowZoom,
         zoomPerClick: allowZoom ? 1.5 : 1,
