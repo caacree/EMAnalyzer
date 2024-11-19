@@ -46,8 +46,8 @@ const MimsImageRegistration = () => {
     })
   }
   const navigate = useNavigate({ from: window.location.pathname });
-  const handleNoCells = () => {
-    api.post(`mims_image/${mimsImageId}/no_cells/`).then(() => {
+  const handleOutsideCanvas = () => {
+    api.post(`mims_image/${mimsImageId}/outside_canvas/`).then(() => {
       queryClient.invalidateQueries();
       navigate({ to: `/canvas/${mimsImage?.image_set?.canvas.id}` });
     })
@@ -58,9 +58,8 @@ const MimsImageRegistration = () => {
       <div className="flex gap-8">
         <Link to={`/canvas/${mimsImage?.image_set?.canvas.id}`}>Back to EM Image</Link>
         <div>{mimsImage?.file?.split('/').pop()}</div>
-
         <div><button onClick={handleReset}>Reset</button></div>
-        <div><button onClick={handleNoCells}>No cells</button></div>
+        <div><button onClick={handleOutsideCanvas}>Outside Canvas</button></div>
       </div>
       <div className="mt-2 flex gap-5 grow">
         <div className="flex grow flex-col mt-[60px]">

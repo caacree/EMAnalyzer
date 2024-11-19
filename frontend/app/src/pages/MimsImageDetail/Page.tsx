@@ -22,7 +22,9 @@ const updateAlignmentStatus = async (
     rotation, 
     flip
   };
-  return api.post(`mims_image/${mimsImageId}/set_alignment/`, post);
+  return api.post(`mims_image/${mimsImageId}/set_alignment/`, post).then(() => {
+    history.back();
+  });
 }
 const fetchMimsImageDetail = async (id: string) => {
   const res = await api.get(`mims_image/${id}/`);
@@ -83,10 +85,15 @@ const MimsImage = () => {
     setSelectedEmPoints((prevPoints: any[]) => [...prevPoints, pos]);
   };
   
-  const handleNoCells = () => {
-    api.post(`mims_image/${mimsImageId}/no_cells/`).then(() => {
+  const handleOutsideCanvas = () => {
+    api.post(`mims_image/${mimsImageId}/outside_canvas/`).then(() => {
       queryClient.invalidateQueries();
       navigate({ to: `/canvas/${mimsImage?.image_set?.canvas.id}` });
+    })
+  }
+  const handleReset = () => {
+    api.post(`mims_image/${mimsImageId}/reset/`).then(() => {
+      queryClient.invalidateQueries();
     })
   }
   
@@ -111,12 +118,13 @@ const MimsImage = () => {
                 ))}
               </TabsList>
             </Tabs>
+            <div><button onClick={handleReset}>Reset</button></div>
             <button onClick={() => updateAlignmentStatus(
                 mimsImage?.id, savedEmPos, rotationSliderValue, mimsflip_hor
-              ).then(() => history.back())}
+              )}
             >Correct</button>
 
-            <div><button onClick={handleNoCells}>No cells</button></div>
+          <div><button onClick={handleOutsideCanvas}>Outside Canvas</button></div>
           </div>
           <div>{mimsImage?.alignments?.find((al: any) => al.id == selectedAlignment)?.status}</div>
           <div className="flex flex-col">
@@ -152,7 +160,7 @@ const MimsImage = () => {
                     Flip: <Checkbox checked={mimsflip_hor} onCheckedChange={(checked: boolean) => setMimsflip_hor(checked)} />
                   </div>
                   <div className="flex gap-2 items-center">
-                    Rotation:<Slider value={[rotationSliderValue]} min={0} max={360} onValueChange={setRotationSliderValue} />{rotationSliderValue}&deg;
+                    Rotation:<Slider value={[rotationSliderValue]} min={0} max={360} onValueChange={(v) => setRotationSliderValue(v?.[0])} />{rotationSliderValue}&deg;
                   </div>
                 </div>
                 <MimsOpenSeaDragon 

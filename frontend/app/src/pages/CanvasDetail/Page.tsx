@@ -95,10 +95,8 @@ const CanvasDetail = () => {
   }
 
   const submitImageSetPoints = () => {
-    postImageSetPoints(mimsImageSet, points)
-  }
-
-  
+    postImageSetPoints(mimsImageSet, points, selectedIsotope);
+  }  
 
   const selectedMimsSet = canvas?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSet);
   return (

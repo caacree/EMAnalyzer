@@ -24,7 +24,7 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
     <div className="flex flex-col">
       <div className="flex gap-1 items-center">
         <div className="flex gap-1 items-center" onClick={() => onSelect(mimsImageSet.id)}><div>{mimsImageSet.name || mimsImageSet.id}</div>
-          <button>{mimsImageSet?.canvas_x && mimsImageSet?.canvas_y ? 'Aligned' : 'Unaligned'}</button>
+          <div>{mimsImageSet?.status}</div>
           <div>{mimsImageSet.mims_images?.length | 0} images</div>
         </div>
         <div className="flex gap-1 items-center">
@@ -32,7 +32,7 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
           <TrashIcon />
         </button></div>
       </div>
-      {mimsImageSet.mims_images?.sort((a: any, b: any) => {
+      {mimsImageSet?.status !== 'ALIGNED' ? (mimsImageSet.mims_images?.sort((a: any, b: any) => {
         const a_priority = STATUS_PRIORITY_MAP[a.status as string];
         const b_priority = STATUS_PRIORITY_MAP[b.status as string];
         return (a_priority <= b_priority ? -1 : 1); 
@@ -43,7 +43,7 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
           </Link>
           <button>{mimsImage.status}</button>
         </div>
-      ))}
+      ))) : null}
     </div>
   );
 };
