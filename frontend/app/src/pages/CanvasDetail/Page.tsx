@@ -3,7 +3,7 @@ import { Link, Route, useNavigate, useParams, useSearch } from "@tanstack/react-
 import React, { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/api";
-import OpenSeaDragon from '@/components/shared/OpenSeaDragon';
+import ControlledOpenSeaDragon from '@/components/shared/ControlledOpenSeaDragon';
 import { useCanvasViewer } from "@/stores/canvasViewer";
 import MIMSImageSet from "./MimsImageSetListItem";
 import MimsOpenSeaDragon from "../../components/shared/MimsOpenSeaDragon";
@@ -145,15 +145,10 @@ const CanvasDetail = () => {
       ) : null}
       <div className="flex w-full">
         <div className="flex w-1/2">
-          <OpenSeaDragon 
+          <ControlledOpenSeaDragon 
             iiifContent={image.dzi_file} 
             onClick={(point: any) => handleEMClickRef.current(point)} 
             points={points.em}
-            options={{
-              degrees: useCanvasViewer.getState().rotation,
-              flipped: useCanvasViewer.getState().flip
-            }}
-            viewerPos={{ zoom: useCanvasViewer.getState().zoom }}
           />
         </div>
         <div className="flex w-1/2">
