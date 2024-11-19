@@ -190,3 +190,40 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
 };
 
 export default ControlledOpenSeaDragon;
+import React from "react";
+import OpenSeaDragon from './OpenSeaDragon';
+import { useCanvasViewer } from "@/stores/canvasViewer";
+
+interface ControlledOpenSeaDragonProps {
+  iiifContent?: string;
+  onClick?: (point: {x: number, y: number}) => void;
+  points: Array<{x: number, y: number}>;
+  setSavedEmPos?: (pos: any) => void;
+}
+
+const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
+  iiifContent,
+  onClick,
+  points,
+  setSavedEmPos
+}) => {
+  const { zoom, flip, rotation } = useCanvasViewer();
+
+  const options = {
+    degrees: rotation,
+    flipped: flip,
+  };
+
+  return (
+    <OpenSeaDragon
+      iiifContent={iiifContent}
+      options={options}
+      viewerPos={{ zoom }}
+      onClick={onClick}
+      points={points}
+      setSavedEmPos={setSavedEmPos}
+    />
+  );
+};
+
+export default ControlledOpenSeaDragon;

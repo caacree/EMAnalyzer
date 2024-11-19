@@ -3,7 +3,8 @@ import { Link, Route, useNavigate, useParams, useSearch } from "@tanstack/react-
 import React, { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/api";
-import OpenSeaDragon from '@/components/shared/OpenSeaDragon';
+import ControlledOpenSeaDragon from '@/components/shared/ControlledOpenSeaDragon';
+import { useCanvasViewer } from "@/stores/canvasViewer";
 import MIMSImageSet from "./MimsImageSetListItem";
 import MimsOpenSeaDragon from "../../components/shared/MimsOpenSeaDragon";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/shared/ui/tabs";
@@ -29,7 +30,7 @@ const CanvasDetail = () => {
     queryFn: () => fetchCanvasDetail(canvasId as string),
   });
   const navigate = useNavigate({ from: window.location.pathname });
-  const [mimsOptions, setMimsOptions] = useState<any>({'flipped': false, 'degrees': 0});
+  const { setFlip, setRotation } = useCanvasViewer();
   const [isSelectingPoints, setIsSelectingPoints] = useState(false);
   const [points, setPoints] = useState<any>({ em: [], mims: [] });
   const handleEMClickRef = useRef((point: any) => {});
@@ -57,7 +58,8 @@ const CanvasDetail = () => {
         return;
       }
       const degrees = (selectedMimsSet?.rotation_degrees) % 360
-      setMimsOptions({flipped: selectedMimsSet?.flip, degrees});
+      setFlip(selectedMimsSet?.flip);
+      setRotation(degrees);
     }
   }, [canvas, mimsImageSet]);
     
@@ -143,7 +145,11 @@ const CanvasDetail = () => {
       ) : null}
       <div className="flex w-full">
         <div className="flex w-1/2">
-          <OpenSeaDragon iiifContent={image.dzi_file} onClick={(point: any) => handleEMClickRef.current(point)} points={points.em} />
+          <ControlledOpenSeaDragon 
+            iiifContent={image.dzi_file} 
+            onClick={(point: any) => handleEMClickRef.current(point)} 
+            points={points.em} 
+          />
         </div>
         <div className="flex w-1/2">
           <div className="flex flex-col gap-3">
@@ -172,15 +178,19 @@ const CanvasDetail = () => {
                     <TabsContent key={isotope} value={isotope}>
                       <div className="flex items-center justify-between">
                         <div className="flex gap-2 items-center">
-                          Flip: <Checkbox checked={mimsOptions.flipped} onCheckedChange={(checked: boolean) => setMimsOptions({flipped: checked, degrees: mimsOptions.degrees})} />
+                          Flip: <Checkbox checked={useCanvasViewer.getState().flip} onCheckedChange={setFlip} />
                         </div>
                         <div className="flex gap-2 items-center">
-                          Rotation:<Slider value={[mimsOptions.degrees]} min={0} max={360} onValueChange={(val) => setMimsOptions({flipped: mimsOptions.flipped, degrees: Math.round(val[0])})} />{mimsOptions.degrees}&deg;
+                          Rotation:<Slider 
+                            value={[useCanvasViewer.getState().rotation]} 
+                            min={0} 
+                            max={360} 
+                            onValueChange={(val) => setRotation(Math.round(val[0]))} 
+                          />{useCanvasViewer.getState().rotation}&deg;
                         </div>
                       </div>
                       <MimsOpenSeaDragon 
                         iiifContent={"http://localhost:8000" + selectedMimsSet.composite_images[isotope]+"/info.json"} 
-                        options={mimsOptions}
                         onClick={(point: any) => handleMimsClickRef.current(point)}
                         points={points.mims}
                         allowZoom
