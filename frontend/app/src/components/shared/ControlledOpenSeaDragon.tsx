@@ -94,17 +94,6 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
 
     const viewer = osdViewerRef.current;
 
-    if (allowZoom) {
-      viewer.addHandler('zoom', () => {
-        const viewport = viewer.viewport;
-        if (!viewport) return;
-        const newZoom = viewport.viewportToImageZoom(viewport.getZoom());
-        if (newZoom !== zoom) {
-          setZoom(newZoom);
-        }
-      });
-    }
-
     if (allowRotation) {
       viewer.addHandler('rotate', () => {
         const viewport = viewer.viewport;
@@ -126,19 +115,6 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
         }
       });
     }
-    if (allowSelection){
-      viewer.addHandler('canvas-click', (e) => {
-        const viewport = viewer.viewport;
-        if (!viewport) return;
-        const tiledImage = viewer.world.getItemAt(0);
-        if (!viewport || !tiledImage) {
-          return
-        }
-        const imageCoords = tiledImage.viewerElementToImageCoordinates(e.position);
-        addPoint({x: imageCoords.x, y: imageCoords.y});
-      });
-    }
-
     return () => {
       if (osdViewerRef.current) {
         osdViewerRef.current.destroy();
@@ -178,6 +154,45 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
       viewer.viewport.setFlip(flip);
     }
   }, [flip]);
+
+  // Handle zoom and selection settings changes
+  useEffect(() => {
+    const viewer = osdViewerRef.current;
+    if (!viewer) return;
+
+    // Update gesture settings
+    viewer.gestureSettingsMouse.clickToZoom = allowZoom && !allowSelection;
+
+    // Clear existing handlers
+    viewer.removeAllHandlers('zoom');
+    viewer.removeAllHandlers('canvas-click');
+
+    // Add zoom handler if enabled
+    if (allowZoom) {
+      viewer.addHandler('zoom', () => {
+        const viewport = viewer.viewport;
+        if (!viewport) return;
+        const newZoom = viewport.viewportToImageZoom(viewport.getZoom());
+        if (newZoom !== zoom) {
+          setZoom(newZoom);
+        }
+      });
+    }
+
+    // Add selection handler if enabled
+    if (allowSelection) {
+      viewer.addHandler('canvas-click', (e) => {
+        const viewport = viewer.viewport;
+        if (!viewport) return;
+        const tiledImage = viewer.world.getItemAt(0);
+        if (!viewport || !tiledImage) {
+          return;
+        }
+        const imageCoords = tiledImage.viewerElementToImageCoordinates(e.position);
+        addPoint({x: imageCoords.x, y: imageCoords.y});
+      });
+    }
+  }, [allowZoom, allowSelection]);
 
   // Handle points changes
   useEffect(() => {
