@@ -38,14 +38,7 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const osdViewerRef = useRef<OpenSeadragon.Viewer | null>(null);
 
-  useEffect(() => {
-    if (!viewerRef.current || !iiifContent) return;
-
-    if (osdViewerRef.current) {
-      osdViewerRef.current.destroy();
-    }
-
-    const newPointIndicator = (number: number) => {
+  const newPointIndicator = (number: number) => {
       const container = document.createElement('div');
       container.style.position = 'relative';
     
@@ -71,13 +64,13 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
       return container;
     }
 
-    const overlays = points?.map((point, index) => ({
-      element: newPointIndicator(index + 1),
-      location: new OpenSeadragon.Point(point.x, point.y),
-      placement: OpenSeadragon.Placement.CENTER,
-      checkResize: false,
-      rotationMode: OpenSeadragon.OverlayRotationMode.NO_ROTATION,
-    })) || [];
+  // Initialize viewer
+  useEffect(() => {
+    if (!viewerRef.current || !iiifContent) return;
+
+    if (osdViewerRef.current) {
+      osdViewerRef.current.destroy();
+    }
 
     osdViewerRef.current = OpenSeadragon({
       prefixUrl: '/openseadragon/images/',
@@ -88,32 +81,20 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
         clickToZoom: allowZoom,
       },
       showNavigator: true,
-      overlays: osdOverlays,
+      showRotationControl: allowRotation,
+      showFlipControl: allowFlip,
     });
 
     const viewer = osdViewerRef.current;
-
-    viewer.addHandler('open', () => {
-      const viewport = viewer.viewport;
-      if (!viewport) return;
-
-      // Set initial zoom
-      const imageZoom = viewport.imageToViewportZoom(zoom);
-      viewport.zoomTo(imageZoom, undefined, true);
-
-      // Set initial rotation
-      viewport.setRotation(rotation);
-
-      // Set initial flip
-      viewport.setFlip(flip);
-    });
 
     if (allowZoom) {
       viewer.addHandler('zoom', () => {
         const viewport = viewer.viewport;
         if (!viewport || !onZoomChange) return;
         const newZoom = viewport.viewportToImageZoom(viewport.getZoom());
-        onZoomChange(newZoom);
+        if (newZoom !== zoom) {
+          onZoomChange(newZoom);
+        }
       });
     }
 
@@ -121,7 +102,21 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
       viewer.addHandler('rotate', () => {
         const viewport = viewer.viewport;
         if (!viewport || !onRotationChange) return;
-        onRotationChange(viewport.getRotation());
+        const newRotation = viewport.getRotation();
+        if (newRotation !== rotation) {
+          onRotationChange(newRotation);
+        }
+      });
+    }
+
+    if (allowFlip) {
+      viewer.addHandler('flip', () => {
+        const viewport = viewer.viewport;
+        if (!viewport || !onFlipChange) return;
+        const newFlip = viewport.getFlip();
+        if (newFlip !== flip) {
+          onFlipChange(newFlip);
+        }
       });
     }
 
@@ -130,30 +125,48 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
         osdViewerRef.current.destroy();
       }
     };
-  }, [iiifContent]); // Only recreate viewer when source changes
+  }, [iiifContent]);
 
-  // Update viewer state without re-initializing
+  // Handle zoom changes
+  useEffect(() => {
+    const viewer = osdViewerRef.current;
+    if (!viewer?.viewport) return;
+
+    const currentZoom = viewer.viewport.viewportToImageZoom(viewer.viewport.getZoom());
+    if (currentZoom !== zoom) {
+      viewer.viewport.zoomTo(viewer.viewport.imageToViewportZoom(zoom), undefined, true);
+    }
+  }, [zoom]);
+
+  // Handle rotation changes
+  useEffect(() => {
+    const viewer = osdViewerRef.current;
+    if (!viewer?.viewport) return;
+
+    const currentRotation = viewer.viewport.getRotation();
+    if (currentRotation !== rotation) {
+      viewer.viewport.setRotation(rotation);
+    }
+  }, [rotation]);
+
+  // Handle flip changes
+  useEffect(() => {
+    const viewer = osdViewerRef.current;
+    if (!viewer?.viewport) return;
+
+    const currentFlip = viewer.viewport.getFlip();
+    if (currentFlip !== flip) {
+      viewer.viewport.setFlip(flip);
+    }
+  }, [flip]);
+
+  // Handle points changes
   useEffect(() => {
     const viewer = osdViewerRef.current;
     if (!viewer) return;
 
-    const viewport = viewer.viewport;
-    if (!viewport) return;
-
-    viewport.zoomTo(viewport.imageToViewportZoom(zoom), undefined, true);
-    viewport.setRotation(rotation);
-    viewport.setFlip(flip);
-  }, [zoom, rotation, flip]);
-
-  // Update points without re-initializing
-  useEffect(() => {
-    const viewer = osdViewerRef.current;
-    if (!viewer) return;
-
-    // Clear existing overlays
     viewer.clearOverlays();
 
-    // Add new points
     points?.forEach((point, index) => {
       viewer.addOverlay({
         element: newPointIndicator(index + 1),
