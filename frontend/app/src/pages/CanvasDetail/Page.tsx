@@ -30,7 +30,8 @@ const CanvasDetail = () => {
     queryFn: () => fetchCanvasDetail(canvasId as string),
   });
   const navigate = useNavigate({ from: window.location.pathname });
-  const { setFlip, setRotation } = useCanvasViewer();
+  const canvasStore = useCanvasViewer();
+  const {setFlip, setRotation} = canvasStore;
   const [isSelectingPoints, setIsSelectingPoints] = useState(false);
   const [points, setPoints] = useState<any>({ em: [], mims: [] });
   const handleEMClickRef = useRef((point: any) => {});
@@ -147,8 +148,10 @@ const CanvasDetail = () => {
         <div className="flex w-1/2">
           <ControlledOpenSeaDragon 
             iiifContent={image.dzi_file} 
-            onClick={(point: any) => handleEMClickRef.current(point)} 
-            points={points.em}
+            canvasStore={canvasStore}
+            allowZoom={true}
+            allowFlip={false}
+            allowRotation={false}
           />
         </div>
         <div className="flex w-1/2">
