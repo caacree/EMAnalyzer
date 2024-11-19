@@ -26,7 +26,7 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
   zoom,
   flip,
   rotation,
-  overlays,
+  points,
   allowZoom = false,
   allowFlip = false,
   allowRotation = false,
