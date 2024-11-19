@@ -4,10 +4,10 @@ import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/api";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/shared/ui/tabs";
-import OpenSeaDragon from "@/components/shared/OpenSeaDragon";
 import { useCanvasViewer } from "@/stores/canvasViewer";
+import { useMimsViewer } from "@/stores/mimsViewer";
 import { cn } from "@/lib/utils";
-import MimsOpenSeaDragon from "@/components/shared/MimsOpenSeaDragon";
+import ControlledOpenSeaDragon from "@/components/shared/ControlledOpenSeaDragon";
 import { Slider } from "@/components/shared/ui/slider";
 import { Checkbox } from "../../components/shared/ui/checkbox";
 import { TrashIcon } from "lucide-react";
@@ -33,7 +33,10 @@ const fetchMimsImageDetail = async (id: string) => {
 };
 
 const MimsImage = () => {
-  const { setZoom, setFlip, setRotation } = useCanvasViewer();
+  const canvasStore = useCanvasViewer();
+  const mimsStore = useMimsViewer();
+  const { setZoom: setEmZoom, setFlip: setEmFlip, setRotation: setEmRotation } = canvasStore;
+  const { setZoom: setMimsZoom, setFlip: setMimsFlip, setRotation: setMimsRotation } = mimsStore;
   const [openseadragonOptions, setOpenseadragonOptions] = useState<any>({defaultZoomLevel: 1});
   const [savedEmPos, setSavedEmPos] = useState<any | null>(null);
   const [selectedAlignment, setSelectedAlignment] = useState<string>('');
@@ -57,9 +60,12 @@ const MimsImage = () => {
 
     const alignment = mimsImage?.alignments?.find((al: any) => al.id == alignmentId)
     if (alignment) {
-      setRotation(alignment?.rotation_degrees);
-      setFlip(alignment?.flip_hor);
-      setZoom(1/alignment?.scale);
+      setEmRotation(alignment?.rotation_degrees);
+      setEmFlip(alignment?.flip_hor);
+      setEmZoom(1/alignment?.scale);
+      setMimsRotation(alignment?.rotation_degrees);
+      setMimsFlip(alignment?.flip_hor);
+      setMimsZoom(1/alignment?.scale);
       setSavedEmPos({
         zoom: 1/alignment?.scale,
         xOffset: alignment?.x_offset,
@@ -129,12 +135,13 @@ const MimsImage = () => {
           <div>{mimsImage?.alignments?.find((al: any) => al.id == selectedAlignment)?.status}</div>
           <div className="flex flex-col">
             <div className="w-[600px] h-[600px]">
-              <OpenSeaDragon 
+              <ControlledOpenSeaDragon 
                 iiifContent={`http://localhost:8000/${mimsImage?.em_dzi}`}
-                options={openseadragonOptions}
-                viewerPos={openseadragonEmViewerPos}
-                onClick={updateSelectedEmPoints}
-                setSavedEmPos={setSavedEmPos}
+                canvasStore={canvasStore}
+                allowZoom={true}
+                allowFlip={true}
+                allowRotation={true}
+                allowSelection={true}
               />
           </div>
           </div>
@@ -157,16 +164,19 @@ const MimsImage = () => {
               <TabsContent key={isotope.name} value={isotope.name}>
                 <div className="flex items-center justify-between">
                   <div className="flex gap-2 items-center">
-                    Flip: <Checkbox checked={useCanvasViewer.getState().flip} onCheckedChange={setFlip} />
+                    Flip: <Checkbox checked={useMimsViewer.getState().flip} onCheckedChange={setMimsFlip} />
                   </div>
                   <div className="flex gap-2 items-center">
-                    Rotation:<Slider value={[useCanvasViewer.getState().rotation]} min={0} max={360} onValueChange={(v) => setRotation(v?.[0])} />{useCanvasViewer.getState().rotation}&deg;
+                    Rotation:<Slider value={[useMimsViewer.getState().rotation]} min={0} max={360} onValueChange={(v) => setMimsRotation(v?.[0])} />{useMimsViewer.getState().rotation}&deg;
                   </div>
                 </div>
-                <MimsOpenSeaDragon 
-                  url={isotope.url} 
-                  options={options}
-                  // onClick={(pos: any) => setSelectedMimsPoints([...selectedMimsPoints, pos])}
+                <ControlledOpenSeaDragon 
+                  iiifContent={isotope.url}
+                  canvasStore={mimsStore}
+                  allowZoom={true}
+                  allowFlip={true}
+                  allowRotation={true}
+                  allowSelection={true}
                 />
               </TabsContent>
           )})}
