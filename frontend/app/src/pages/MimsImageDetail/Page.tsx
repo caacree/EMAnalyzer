@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/api";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/shared/ui/tabs";
 import OpenSeaDragon from "@/components/shared/OpenSeaDragon";
+import { useCanvasViewer } from "@/stores/canvasViewer";
 import { cn } from "@/lib/utils";
 import MimsOpenSeaDragon from "@/components/shared/MimsOpenSeaDragon";
 import { Slider } from "@/components/shared/ui/slider";
@@ -32,11 +33,9 @@ const fetchMimsImageDetail = async (id: string) => {
 };
 
 const MimsImage = () => {
+  const { setZoom, setFlip, setRotation } = useCanvasViewer();
   const [openseadragonOptions, setOpenseadragonOptions] = useState<any>({defaultZoomLevel: 1});
-  const [openseadragonEmViewerPos, setOpenseadragonEmViewerPos] = useState<any>({});
   const [savedEmPos, setSavedEmPos] = useState<any | null>(null);
-  const [rotationSliderValue, setRotationSliderValue] = useState(0);
-  const [mimsflip_hor, setMimsflip_hor] = useState(false);
   const [selectedAlignment, setSelectedAlignment] = useState<string>('');
   const [selectedIsotope, setSelectedIsotope] = useState("32S");
   const [selectedEmPoints, setSelectedEmPoints] = useState<any | null>([]);
@@ -58,9 +57,10 @@ const MimsImage = () => {
 
     const alignment = mimsImage?.alignments?.find((al: any) => al.id == alignmentId)
     if (alignment) {
-      setRotationSliderValue(alignment?.rotation_degrees);
-      setMimsflip_hor(alignment?.flip_hor)
-      setOpenseadragonEmViewerPos({
+      setRotation(alignment?.rotation_degrees);
+      setFlip(alignment?.flip_hor);
+      setZoom(1/alignment?.scale);
+      setSavedEmPos({
         zoom: 1/alignment?.scale,
         xOffset: alignment?.x_offset,
         yOffset: alignment?.y_offset,
@@ -120,7 +120,7 @@ const MimsImage = () => {
             </Tabs>
             <div><button onClick={handleReset}>Reset</button></div>
             <button onClick={() => updateAlignmentStatus(
-                mimsImage?.id, savedEmPos, rotationSliderValue, mimsflip_hor
+                mimsImage?.id, savedEmPos, useCanvasViewer.getState().rotation, useCanvasViewer.getState().flip
               )}
             >Correct</button>
 
@@ -150,17 +150,17 @@ const MimsImage = () => {
             </TabsList>
           {mimsImage.isotopes?.map((isotope: any) => {
             const options = {
-              degrees: Math.round(rotationSliderValue),
-              flipped: mimsflip_hor
+              degrees: Math.round(useCanvasViewer.getState().rotation),
+              flipped: useCanvasViewer.getState().flip
             }
             return (
               <TabsContent key={isotope.name} value={isotope.name}>
                 <div className="flex items-center justify-between">
                   <div className="flex gap-2 items-center">
-                    Flip: <Checkbox checked={mimsflip_hor} onCheckedChange={(checked: boolean) => setMimsflip_hor(checked)} />
+                    Flip: <Checkbox checked={useCanvasViewer.getState().flip} onCheckedChange={setFlip} />
                   </div>
                   <div className="flex gap-2 items-center">
-                    Rotation:<Slider value={[rotationSliderValue]} min={0} max={360} onValueChange={(v) => setRotationSliderValue(v?.[0])} />{rotationSliderValue}&deg;
+                    Rotation:<Slider value={[useCanvasViewer.getState().rotation]} min={0} max={360} onValueChange={(v) => setRotation(v?.[0])} />{useCanvasViewer.getState().rotation}&deg;
                   </div>
                 </div>
                 <MimsOpenSeaDragon 
