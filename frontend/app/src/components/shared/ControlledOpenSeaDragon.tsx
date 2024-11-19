@@ -6,35 +6,42 @@ interface Point {
   y: number;
 }
 
-interface ControlledOpenSeaDragonProps {
-  iiifContent: string;
+interface canvasStoreType {
   zoom: number;
   flip: boolean;
   rotation: number;
   points?: Point[];
+  setZoom: (zoom: number) => void;
+  setFlip: (flip: boolean) => void;
+  setRotation: (rotation: number) => void;
+  addPoint: (point: Point) => void;
+}
+interface ControlledOpenSeaDragonProps {
+  iiifContent: string;
+  canvasStore: canvasStoreType;
+  allowSelection?: boolean;
   allowZoom?: boolean;
   allowFlip?: boolean;
   allowRotation?: boolean;
-  allowSelection?: boolean;
-  onZoomChange?: (zoom: number) => void;
-  onFlipChange?: (flipped: boolean) => void;
-  onRotationChange?: (rotation: number) => void;
 }
 
 const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
   iiifContent,
-  zoom,
-  flip,
-  rotation,
-  points,
+  canvasStore,
+  allowSelection = false,
   allowZoom = false,
   allowFlip = false,
   allowRotation = false,
-  allowSelection = false,
-  onZoomChange,
-  onFlipChange,
-  onRotationChange,
 }) => {
+  const {zoom,
+    flip,
+    rotation,
+    points,
+    setZoom,
+    setFlip,
+    setRotation,
+    addPoint
+  } = canvasStore;
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const osdViewerRef = useRef<OpenSeadragon.Viewer | null>(null);
 
@@ -90,10 +97,10 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
     if (allowZoom) {
       viewer.addHandler('zoom', () => {
         const viewport = viewer.viewport;
-        if (!viewport || !onZoomChange) return;
+        if (!viewport) return;
         const newZoom = viewport.viewportToImageZoom(viewport.getZoom());
         if (newZoom !== zoom) {
-          onZoomChange(newZoom);
+          setZoom(newZoom);
         }
       });
     }
@@ -101,10 +108,10 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
     if (allowRotation) {
       viewer.addHandler('rotate', () => {
         const viewport = viewer.viewport;
-        if (!viewport || !onRotationChange) return;
+        if (!viewport) return;
         const newRotation = viewport.getRotation();
         if (newRotation !== rotation) {
-          onRotationChange(newRotation);
+          setRotation(newRotation);
         }
       });
     }
@@ -112,11 +119,23 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
     if (allowFlip) {
       viewer.addHandler('flip', () => {
         const viewport = viewer.viewport;
-        if (!viewport || !onFlipChange) return;
+        if (!viewport) return;
         const newFlip = viewport.getFlip();
         if (newFlip !== flip) {
-          onFlipChange(newFlip);
+          setFlip(newFlip);
         }
+      });
+    }
+    if (allowSelection){
+      viewer.addHandler('canvas-click', (e) => {
+        const viewport = viewer.viewport;
+        if (!viewport) return;
+        const tiledImage = viewer.world.getItemAt(0);
+        if (!viewport || !tiledImage) {
+          return
+        }
+        const imageCoords = tiledImage.viewerElementToImageCoordinates(e.position);
+        addPoint({x: imageCoords.x, y: imageCoords.y});
       });
     }
 
@@ -189,41 +208,4 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
   );
 };
 
-export default ControlledOpenSeaDragon;
-import React from "react";
-import OpenSeaDragon from './OpenSeaDragon';
-import { useCanvasViewer } from "@/stores/canvasViewer";
-
-interface ControlledOpenSeaDragonProps {
-  iiifContent?: string;
-  onClick?: (point: {x: number, y: number}) => void;
-  points: Array<{x: number, y: number}>;
-  setSavedEmPos?: (pos: any) => void;
-}
-
-const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
-  iiifContent,
-  onClick,
-  points,
-  setSavedEmPos
-}) => {
-  const { zoom, flip, rotation } = useCanvasViewer();
-
-  const options = {
-    degrees: rotation,
-    flipped: flip,
-  };
-
-  return (
-    <OpenSeaDragon
-      iiifContent={iiifContent}
-      options={options}
-      viewerPos={{ zoom }}
-      onClick={onClick}
-      points={points}
-      setSavedEmPos={setSavedEmPos}
-    />
-  );
-};
-
-export default ControlledOpenSeaDragon;
+export default ControlledOpenSeaDragon
