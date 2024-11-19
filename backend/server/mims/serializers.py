@@ -48,6 +48,7 @@ class MIMSImageSetSerializer(serializers.ModelSerializer):
         depth = 1
         fields = [
             "id",
+            "status",
             "canvas",
             "created_at",
             "updated_at",
@@ -85,10 +86,6 @@ class MIMSImageSetSerializer(serializers.ModelSerializer):
             for isotope_name in composite_images
         }
         return composite_images
-
-
-# Import MIMSAlignment model
-from mims.models import MIMSImageSet, MIMSImage, Isotope, MIMSAlignment
 
 
 # New serializer for MIMSAlignment
@@ -161,6 +158,6 @@ class MIMSImageSerializer(serializers.ModelSerializer):
         }
         for isotope in isotopes:
             urls[f"{isotope.name}_url"] = os.path.join(
-                base, f"{isotope.name}{suffix}.png"
+                Path(base).parent, "isotopes", f"{isotope.name}_autocontrast.png"
             )
         return urls

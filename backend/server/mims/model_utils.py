@@ -5,12 +5,13 @@ from PIL import Image
 import pprint
 from pathlib import Path
 import sims
+import os
+from pathlib import Path
+import sims
 
 
 # Function to get autocontrast image path
 def get_autocontrast_image_path(mims_image, species):
-    mims_image_set = mims_image.image_set
-
     isotope_image_dir = os.path.join(
         os.path.dirname(mims_image.file.path),
         mims_image.file.name.split(".")[0].split("/")[-1],

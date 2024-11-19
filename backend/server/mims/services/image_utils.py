@@ -1,6 +1,7 @@
 import numpy as np
 import pyvips
 from skimage import transform
+import re
 
 
 def manipulate_image(image, angle, flip_hor):
@@ -38,6 +39,14 @@ def update_top_locations(top_locations, x, y, iou, angle, flip_hor):
         # Reorder by iou and remove the lowest
     top_locations = sorted(top_locations, key=lambda x: x[2], reverse=True)[:3]
     return top_locations
+
+
+def extract_final_digit(filename):
+    # Regular expression to find the final number before the .im extension
+    match = re.search(r"(\d+)(?=\.im$)", filename)
+    return (
+        int(match.group(0)) if match else float("inf")
+    )  # If no match, assign infinity for last sorting
 
 
 def do_sliding_search(im1, im2, valid_im1, valid_im2, angle, flip_hor):

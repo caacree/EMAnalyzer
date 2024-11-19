@@ -71,6 +71,7 @@ class MIMSImageSetSerializer(serializers.ModelSerializer):
         model = MIMSImageSet
         fields = [
             "id",
+            "status",
             "canvas",
             "mims_images",
             "created_at",

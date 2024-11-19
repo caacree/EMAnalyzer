@@ -1,9 +1,9 @@
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
 from rest_framework.response import Response
+import json
 from rest_framework.decorators import action
 from mims.services.registration_utils import (
-    create_registration_images,
     mask_to_polygon,
 )
 from core.models import Canvas
@@ -12,7 +12,7 @@ from .serializers import MIMSImageSetSerializer, MIMSImageSerializer
 from .tasks import (
     create_registration_images_task,
     preprocess_mims_image_set,
-    register_images,
+    register_images_task,
 )
 from mims.services.orient_images import orient_viewset
 import os
@@ -64,7 +64,8 @@ class MIMSImageSetViewSet(viewsets.ModelViewSet):
         data = request.data
         mims_image_set = self.get_object()
         viewset_points = data.get("points")
-        orient_viewset(mims_image_set, viewset_points)
+        isotope = data.get("isotope", "SE")
+        orient_viewset(mims_image_set, viewset_points, isotope)
         return Response(status=status.HTTP_200_OK)
 
 
@@ -104,7 +105,10 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
             scale=mims_image.pixel_size_nm / mims_image.image_set.canvas.pixel_size_nm,
             status="USER_ROUGH_ALIGNMENT",
         )
+
         create_registration_images_task.delay(mims_image.id)
+        mims_image.status = "AWAITING_REGISTRATION"
+        mims_image.save()
 
         return Response(
             {"message": "Alignment updated successfully"}, status=status.HTTP_200_OK
@@ -118,6 +122,9 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
         if predictor_key not in predictors:
             mims_path = Path(mims_image.file.path)
             reg_loc = os.path.join(mims_path.parent, mims_path.stem, "registration")
+            if image_key != "em":
+                reg_loc = os.path.join(mims_path.parent, mims_path.stem, "isotopes")
+                image_key = f"{image_key}_autocontrast"
             image = np.array(Image.open(os.path.join(reg_loc, f"{image_key}.png")))
 
             # Convert image to 3 channels if it's single-channel
@@ -147,18 +154,25 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def register(self, request, pk=None):
         mims_image = get_object_or_404(MIMSImage, pk=pk)
-        if mims_image.status == "REGISTERING":
+        """if mims_image.status == "REGISTERING":
             return Response(
                 {"message": "MIMS image is not ready for registration"},
                 status=status.HTTP_400_BAD_REQUEST,
-            )
-        mims_image.status = "REGISTERING"
-        mims_image.save()
+            )"""
+        # mims_image.status = "REGISTERING"
+        # mims_image.save()
 
         em_shapes = request.data.get("em_shapes")
         mims_shapes = request.data.get("mims_shapes")
 
-        register_images.delay(mims_image.id, mims_shapes, em_shapes)
+        mims_path = Path(mims_image.file.path)
+        reg_loc = os.path.join(mims_path.parent, mims_path.stem, "registration")
+        with open(os.path.join(reg_loc, "reg_shapes.json"), "w") as shapes_file:
+            shapes_file.write(
+                json.dumps({"em_shapes": em_shapes, "mims_shapes": mims_shapes})
+            )
+
+        register_images_task.delay(mims_image.id)
         global predictors
         predictors = {}
         return Response(
@@ -179,11 +193,11 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=["post"])
-    def no_cells(self, request, pk=None):
+    def outside_canvas(self, request, pk=None):
         mims_image = get_object_or_404(MIMSImage, pk=pk)
-        mims_image.status = "NO_CELLS"
+        mims_image.status = "OUTSIDE_CANVAS"
         # mims_image.alignments.all().delete()
         mims_image.save()
         return Response(
-            {"message": "MIMS image set to no cells"}, status=status.HTTP_200_OK
+            {"message": "MIMS image is outside the canvas"}, status=status.HTTP_200_OK
         )

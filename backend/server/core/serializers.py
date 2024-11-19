@@ -31,6 +31,7 @@ class MimsImageSetCanvasDetailSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "canvas",
+            "status",
             "created_at",
             "updated_at",
             "flip",

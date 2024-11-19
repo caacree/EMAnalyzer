@@ -1,7 +1,13 @@
 import SimpleITK as sitk
+from mims.services.image_utils import extract_final_digit
+from mims.models import MIMSImageSet
 from mims.services.registration_utils import create_composite_mask
 import os
+import cv2
+import tifffile
+import numpy as np
 from PIL import Image
+import pandas as pd
 from django.conf import settings
 
 media_root = settings.MEDIA_ROOT
@@ -13,14 +19,14 @@ def command_iteration(method):
 
 
 def unwarp_image(mims_image):
-    reg_loc = os.path.join(media_root, mims_image.file.path[:-3], "registration")
+    reg_loc = os.path.join(media_root, mims_image.file.path[:-3])
 
     # Read the fixed and moving images
     fixed_image = sitk.ReadImage(
-        os.path.join(reg_loc, "em_reg_mask.tiff"), sitk.sitkFloat32
+        os.path.join(reg_loc, "em_mask_for_unwarp.tiff"), sitk.sitkFloat32
     )
     moving_image = sitk.ReadImage(
-        os.path.join(reg_loc, "mims_reg_mask.tiff"), sitk.sitkFloat32
+        os.path.join(reg_loc, "mims_mask_for_unwarp.tiff"), sitk.sitkFloat32
     )
 
     # Set up the BSpline transformation
@@ -58,7 +64,7 @@ def unwarp_image(mims_image):
     resampler = sitk.ResampleImageFilter()
     resampler.SetReferenceImage(fixed_image)
     resampler.SetInterpolator(sitk.sitkLinear)
-    resampler.SetDefaultPixelValue(100)
+    resampler.SetDefaultPixelValue(0)
     resampler.SetTransform(outTx)
 
     out = resampler.Execute(moving_image)
@@ -73,3 +79,153 @@ def unwarp_image(mims_image):
         os.path.join(reg_loc, "composite_mask_unwarped.png")
     )
     return
+
+
+def create_unwarped_composites(mims_imageset_id, full_em_shape):
+    imageset = MIMSImageSet.objects.get(id=mims_imageset_id)
+    is_complete = True
+    for mims_image in imageset.mims_images.all():
+        if (
+            mims_image.status != "DEWARPED_ALIGNED"
+            and mims_image.status != "OUTSIDE_CANVAS"
+        ):
+            is_complete = False
+            break
+    if is_complete:
+        imageset.status = "ALIGNED"
+        imageset.save()
+        # Make the composite images
+        isotopes = [i.name for i in imageset.mims_images.first().isotopes.all()]
+        if "12C" in isotopes and "13C" in isotopes:
+            isotopes.append("13C12C_ratio")
+        if "15N 12C" in isotopes and "14N 12C" in isotopes:
+            isotopes.append("15N14N_ratio")
+        mims_images = sorted(
+            [
+                m
+                for m in mims_image.image_set.mims_images.all()
+                if m.status == "DEWARPED_ALIGNED"
+            ],
+            key=lambda m: extract_final_digit(m.file.name),
+        )
+        for isotope in isotopes:
+            if isotope != "13C12C_ratio" and isotope != "15N14N_ratio":
+                continue
+            output_composites_dir = os.path.join(
+                settings.MEDIA_ROOT,
+                "mims_image_sets",
+                str(imageset.id),
+                "composites",
+                "unwarped_isotopes",
+            )
+            os.makedirs(output_composites_dir, exist_ok=True)
+            isotope_unwarped_composite = np.full(full_em_shape, 0)
+            for image in mims_images:
+                reg_loc = os.path.join(settings.MEDIA_ROOT, image.file.path[:-3])
+                alignment = image.alignments.filter(status="FINAL_TWEAKED_ONE").first()
+                alignment_padding = alignment.info["padding"]
+                image_isotope = np.array(
+                    Image.open(
+                        os.path.join(
+                            settings.MEDIA_ROOT,
+                            "mims_image_sets",
+                            str(image.image_set.id),
+                            "mims_images",
+                            str(image.file.name).split("/")[-1].split(".")[0],
+                            "isotopes",
+                            f"{isotope}.png",
+                        )
+                    )
+                )
+
+                image_isotope = np.pad(
+                    image_isotope,
+                    alignment_padding,
+                    mode="constant",
+                    constant_values=0,
+                )
+                # Run unwarping on JUST the padded original image, not transformed
+                resampler = sitk.ResampleImageFilter()
+                fixed = sitk.GetImageFromArray(np.zeros(image_isotope.shape))
+                resampler.SetReferenceImage(fixed)
+                resampler.SetInterpolator(sitk.sitkLinear)
+                resampler.SetDefaultPixelValue(0)
+                tfm = sitk.ReadTransform(os.path.join(reg_loc, "mims_transform.tfm"))
+                resampler.SetTransform(tfm)
+                moving = sitk.GetImageFromArray(image_isotope)
+                image_isotope_unwarped = resampler.Execute(moving)
+                image_isotope_unwarped = sitk.GetArrayFromImage(
+                    sitk.Cast(image_isotope_unwarped, sitk.sitkUInt16)
+                )
+
+                # Once it's unwarped, then do the rotation, flipping, and scaling
+                image_isotope_unwarped = Image.fromarray(image_isotope_unwarped)
+                if alignment.flip_hor:
+                    image_isotope_unwarped = image_isotope_unwarped.transpose(
+                        Image.FLIP_LEFT_RIGHT
+                    )
+                image_isotope_unwarped = image_isotope_unwarped.rotate(
+                    alignment.rotation_degrees, expand=True
+                )
+                image_isotope_unwarped = np.array(image_isotope_unwarped)
+
+                image_isotope_unwarped = cv2.resize(
+                    image_isotope_unwarped,
+                    (
+                        int(image_isotope_unwarped.shape[1] * alignment.scale),
+                        int(image_isotope_unwarped.shape[0] * alignment.scale),
+                    ),
+                )
+                # Check if the image exceeds the composite bounds
+                canvas_insertion_area = [
+                    max(alignment.y_offset, 0),
+                    min(
+                        alignment.y_offset + image_isotope_unwarped.shape[0],
+                        isotope_unwarped_composite.shape[0],
+                    ),
+                    max(alignment.x_offset, 0),
+                    min(
+                        alignment.x_offset + image_isotope_unwarped.shape[1],
+                        isotope_unwarped_composite.shape[1],
+                    ),
+                ]
+                mims_insertion_area = [
+                    max(-alignment.y_offset, 0),
+                    max(-alignment.y_offset, 0)
+                    + (canvas_insertion_area[1] - canvas_insertion_area[0]),
+                    max(-alignment.x_offset, 0),
+                    max(-alignment.x_offset, 0)
+                    + (canvas_insertion_area[3] - canvas_insertion_area[2]),
+                ]
+
+                # Update only the zero locations in the composite with the values from image_isotope_unwarped
+                composite_slice = isotope_unwarped_composite[
+                    canvas_insertion_area[0] : canvas_insertion_area[1],
+                    canvas_insertion_area[2] : canvas_insertion_area[3],
+                ]
+                mims_slice = image_isotope_unwarped[
+                    mims_insertion_area[0] : mims_insertion_area[1],
+                    mims_insertion_area[2] : mims_insertion_area[3],
+                ]
+
+                # Generate the nan mask for the composite slice
+                zero_mask = composite_slice == 0
+
+                # Update only zero locations in the composite
+                composite_slice[zero_mask] = mims_slice[zero_mask]
+
+                # Replace the region in the composite with the updated slice
+                isotope_unwarped_composite[
+                    canvas_insertion_area[0] : canvas_insertion_area[1],
+                    canvas_insertion_area[2] : canvas_insertion_area[3],
+                ] = composite_slice
+            if np.max(isotope_unwarped_composite) < 256:
+                isotope_unwarped_composite = isotope_unwarped_composite.astype(np.uint8)
+            else:
+                isotope_unwarped_composite = isotope_unwarped_composite.astype(
+                    np.uint16
+                )
+            tifffile.imwrite(
+                os.path.join(output_composites_dir, f"{isotope}.tiff"),
+                isotope_unwarped_composite,
+            )

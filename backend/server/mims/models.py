@@ -2,7 +2,7 @@ from django.db import models
 from core.models import AbstractBaseModel, CanvasObj, Canvas
 import os
 import shutil
-from mims.services import get_concatenated_image
+from mims.model_utils import get_concatenated_image
 from django.conf import settings
 
 
@@ -21,6 +21,7 @@ class MIMSImageSet(CanvasObj):
     canvas = models.ForeignKey(
         Canvas, on_delete=models.CASCADE, related_name="mims_sets"
     )
+    status = models.CharField(max_length=50, default="PREPROCESSING")
 
     def __str__(self):
         return f"MIMSImageSet {self.id}"
@@ -93,3 +94,5 @@ class MIMSAlignment(AbstractBaseModel):
     rotation_degrees = models.IntegerField()
     flip_hor = models.BooleanField()
     scale = models.FloatField()
+
+    info = models.JSONField(null=True, blank=True)
