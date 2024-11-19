@@ -85,7 +85,7 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
       tileSources: [{ tileSource: iiifContent }],
       minZoomLevel: 0.9,
       gestureSettingsMouse: {
-        clickToZoom: allowZoom,
+        clickToZoom: allowZoom && !allowSelection,
       },
       showNavigator: true,
       showRotationControl: allowRotation,
