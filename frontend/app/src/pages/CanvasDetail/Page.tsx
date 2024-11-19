@@ -5,8 +5,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/api";
 import ControlledOpenSeaDragon from '@/components/shared/ControlledOpenSeaDragon';
 import { useCanvasViewer } from "@/stores/canvasViewer";
+import { useMimsViewer } from "@/stores/mimsViewer";
 import MIMSImageSet from "./MimsImageSetListItem";
-import MimsOpenSeaDragon from "../../components/shared/MimsOpenSeaDragon";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/shared/ui/tabs";
 import { Checkbox } from "../../components/shared/ui/checkbox";
 import { Slider } from "../../components/shared/ui/slider";
@@ -31,7 +31,9 @@ const CanvasDetail = () => {
   });
   const navigate = useNavigate({ from: window.location.pathname });
   const canvasStore = useCanvasViewer();
-  const {setFlip, setRotation} = canvasStore;
+  const mimsStore = useMimsViewer();
+  const {setFlip: setEmFlip, setRotation: setEmRotation} = canvasStore;
+  const {setFlip: setMimsFlip, setRotation: setMimsRotation} = mimsStore;
   const [isSelectingPoints, setIsSelectingPoints] = useState(false);
   const [points, setPoints] = useState<any>({ em: [], mims: [] });
   const handleEMClickRef = useRef((point: any) => {});
@@ -59,8 +61,10 @@ const CanvasDetail = () => {
         return;
       }
       const degrees = (selectedMimsSet?.rotation_degrees) % 360
-      setFlip(selectedMimsSet?.flip);
-      setRotation(degrees);
+      setEmFlip(selectedMimsSet?.flip);
+      setEmRotation(degrees);
+      setMimsFlip(selectedMimsSet?.flip);
+      setMimsRotation(degrees);
     }
   }, [canvas, mimsImageSet]);
     
@@ -181,22 +185,24 @@ const CanvasDetail = () => {
                     <TabsContent key={isotope} value={isotope}>
                       <div className="flex items-center justify-between">
                         <div className="flex gap-2 items-center">
-                          Flip: <Checkbox checked={useCanvasViewer.getState().flip} onCheckedChange={setFlip} />
+                          Flip: <Checkbox checked={useMimsViewer.getState().flip} onCheckedChange={setMimsFlip} />
                         </div>
                         <div className="flex gap-2 items-center">
                           Rotation:<Slider 
-                            value={[useCanvasViewer.getState().rotation]} 
+                            value={[useMimsViewer.getState().rotation]} 
                             min={0} 
                             max={360} 
-                            onValueChange={(val) => setRotation(Math.round(val[0]))} 
-                          />{useCanvasViewer.getState().rotation}&deg;
+                            onValueChange={(val) => setMimsRotation(Math.round(val[0]))} 
+                          />{useMimsViewer.getState().rotation}&deg;
                         </div>
                       </div>
-                      <MimsOpenSeaDragon 
-                        iiifContent={"http://localhost:8000" + selectedMimsSet.composite_images[isotope]+"/info.json"} 
-                        onClick={(point: any) => handleMimsClickRef.current(point)}
-                        points={points.mims}
-                        allowZoom
+                      <ControlledOpenSeaDragon 
+                        iiifContent={"http://localhost:8000" + selectedMimsSet.composite_images[isotope]+"/info.json"}
+                        canvasStore={mimsStore}
+                        allowZoom={true}
+                        allowFlip={true}
+                        allowRotation={true}
+                        allowSelection={isSelectingPoints}
                       />
                     </TabsContent>
                   )})}
