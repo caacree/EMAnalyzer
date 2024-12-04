@@ -255,25 +255,38 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
   useEffect(() => {
     const viewer = osdViewerRef.current;
     if (!viewer?.viewport || !coordinates || coordinates.length === 0) return;
-    
+
+    const handleCoordinates = () => {
+      const tiledImage = viewer.world.getItemAt(0);
+      if (!tiledImage) return;
+
+      // Convert image coordinates to viewport coordinates
+      const topLeft = tiledImage.imageToViewportCoordinates(coordinates[0].x, coordinates[0].y);
+      const bottomRight = coordinates[1] 
+        ? tiledImage.imageToViewportCoordinates(coordinates[1].x, coordinates[1].y)
+        : tiledImage.imageToViewportCoordinates(coordinates[0].x + 1, coordinates[0].y + 1);
+
+      const bounds = new OpenSeadragon.Rect(
+        topLeft.x,
+        topLeft.y,
+        bottomRight.x - topLeft.x,
+        bottomRight.y - topLeft.y
+      );
+      viewer.viewport.fitBounds(bounds, true);
+    };
+
+    // Try immediately in case image is already loaded
     const tiledImage = viewer.world.getItemAt(0);
-    console.log("uh", coordinates, tiledImage)
-    if (!tiledImage) return;
+    if (tiledImage) {
+      handleCoordinates();
+    } else {
+      // Otherwise wait for the image to load
+      viewer.addOnceHandler('open', handleCoordinates);
+    }
 
-    // Convert image coordinates to viewport coordinates
-    const topLeft = tiledImage.imageToViewportCoordinates(coordinates[0].x, coordinates[0].y);
-    const bottomRight = coordinates[1] 
-      ? tiledImage.imageToViewportCoordinates(coordinates[1].x, coordinates[1].y)
-      : tiledImage.imageToViewportCoordinates(coordinates[0].x + 1, coordinates[0].y + 1);
-
-    const bounds = new OpenSeadragon.Rect(
-      topLeft.x,
-      topLeft.y,
-      bottomRight.x - topLeft.x,
-      bottomRight.y - topLeft.y
-    );
-    console.log(bounds)
-    viewer.viewport.fitBounds(bounds, true);
+    return () => {
+      viewer.removeHandler('open', handleCoordinates);
+    };
   }, [coordinates]);
 
   return (
