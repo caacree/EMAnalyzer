@@ -110,11 +110,20 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
     if (coordinates && coordinates.length > 0) {
       console.log("here")
       viewer.addOnceHandler('open', () => {
+        const tiledImage = viewer.world.getItemAt(0);
+        if (!tiledImage) return;
+
+        // Convert image coordinates to viewport coordinates
+        const topLeft = tiledImage.imageToViewportCoordinates(coordinates[0].x, coordinates[0].y);
+        const bottomRight = coordinates[1] 
+          ? tiledImage.imageToViewportCoordinates(coordinates[1].x, coordinates[1].y)
+          : tiledImage.imageToViewportCoordinates(coordinates[0].x + 1, coordinates[0].y + 1);
+
         const bounds = new OpenSeadragon.Rect(
-          coordinates[0].x,
-          coordinates[0].y,
-          coordinates[1]?.x ? coordinates[1].x - coordinates[0].x : 1,
-          coordinates[1]?.y ? coordinates[1].y - coordinates[0].y : 1
+          topLeft.x,
+          topLeft.y,
+          bottomRight.x - topLeft.x,
+          bottomRight.y - topLeft.y
         );
         viewer.viewport.fitBounds(bounds, true);
       });
@@ -248,11 +257,21 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
     console.log("1")
     if (!viewer?.viewport || !coordinates || coordinates.length === 0) return;
     console.log("2", coordinates)
+    
+    const tiledImage = viewer.world.getItemAt(0);
+    if (!tiledImage) return;
+
+    // Convert image coordinates to viewport coordinates
+    const topLeft = tiledImage.imageToViewportCoordinates(coordinates[0].x, coordinates[0].y);
+    const bottomRight = coordinates[1] 
+      ? tiledImage.imageToViewportCoordinates(coordinates[1].x, coordinates[1].y)
+      : tiledImage.imageToViewportCoordinates(coordinates[0].x + 1, coordinates[0].y + 1);
+
     const bounds = new OpenSeadragon.Rect(
-      coordinates[0].x,
-      coordinates[0].y,
-      coordinates[1]?.x ? coordinates[1].x - coordinates[0].x : 1,
-      coordinates[1]?.y ? coordinates[1].y - coordinates[0].y : 1
+      topLeft.x,
+      topLeft.y,
+      bottomRight.x - topLeft.x,
+      bottomRight.y - topLeft.y
     );
     viewer.viewport.fitBounds(bounds, true);
   }, [coordinates]);
