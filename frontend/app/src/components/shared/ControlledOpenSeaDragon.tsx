@@ -103,14 +103,12 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
       showFlipControl: allowFlip,
       crossOriginPolicy: 'Anonymous'
     });
-    if (url) {
-      console.log(url, iiifContent)
-    }
 
     const viewer = osdViewerRef.current;
     
     // Set initial coordinates if available
     if (coordinates && coordinates.length > 0) {
+      console.log("here")
       viewer.addOnceHandler('open', () => {
         const bounds = new OpenSeadragon.Rect(
           coordinates[0].x,
@@ -247,8 +245,9 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
   // Handle coordinates changes
   useEffect(() => {
     const viewer = osdViewerRef.current;
+    console.log("1")
     if (!viewer?.viewport || !coordinates || coordinates.length === 0) return;
-
+    console.log("2", coordinates)
     const bounds = new OpenSeadragon.Rect(
       coordinates[0].x,
       coordinates[0].y,
