@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import OpenSeadragon from 'openseadragon';
+import 'openseadragon-filtering';
+
 
 interface Point {
   x: number;
@@ -10,6 +12,7 @@ interface canvasStoreType {
   zoom: number;
   flip: boolean;
   rotation: number;
+  coordinates?: Point[];
   points?: Point[];
   setZoom: (zoom: number) => void;
   setFlip: (flip: boolean) => void;
@@ -17,7 +20,8 @@ interface canvasStoreType {
   addPoint: (point: Point) => void;
 }
 interface ControlledOpenSeaDragonProps {
-  iiifContent: string;
+  iiifContent?: string;
+  url?: string;
   canvasStore: canvasStoreType;
   allowSelection?: boolean;
   allowZoom?: boolean;
@@ -27,16 +31,19 @@ interface ControlledOpenSeaDragonProps {
 
 const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
   iiifContent,
+  url,
   canvasStore,
   allowSelection = false,
   allowZoom = false,
   allowFlip = false,
   allowRotation = false,
 }) => {
-  const {zoom,
+  const {
+    zoom,
     flip,
     rotation,
     points,
+    coordinates,
     setZoom,
     setFlip,
     setRotation,
@@ -46,34 +53,34 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
   const osdViewerRef = useRef<OpenSeadragon.Viewer | null>(null);
 
   const newPointIndicator = (number: number) => {
-      const container = document.createElement('div');
-      container.style.position = 'relative';
-    
-      const dot = document.createElement('div');
-      dot.style.width = '5px';
-      dot.style.height = '5px';
-      dot.style.backgroundColor = 'red';
-      dot.style.borderRadius = '50%';
-      dot.style.position = 'absolute';
-      dot.style.bottom = '0';
-      dot.style.left = '0';
-    
-      const numberLabel = document.createElement('div');
-      numberLabel.innerText = number.toString();
-      numberLabel.style.color = 'red';
-      numberLabel.style.position = 'absolute';
-      numberLabel.style.top = '-10px';
-      numberLabel.style.left = '10px';
-    
-      container.appendChild(dot);
-      container.appendChild(numberLabel);
-    
-      return container;
-    }
+    const container = document.createElement('div');
+    container.style.position = 'relative';
+  
+    const dot = document.createElement('div');
+    dot.style.width = '5px';
+    dot.style.height = '5px';
+    dot.style.backgroundColor = 'red';
+    dot.style.borderRadius = '50%';
+    dot.style.position = 'absolute';
+    dot.style.bottom = '0';
+    dot.style.left = '0';
+  
+    const numberLabel = document.createElement('div');
+    numberLabel.innerText = number.toString();
+    numberLabel.style.color = 'red';
+    numberLabel.style.position = 'absolute';
+    numberLabel.style.top = '-10px';
+    numberLabel.style.left = '10px';
+  
+    container.appendChild(dot);
+    container.appendChild(numberLabel);
+  
+    return container;
+  }
 
   // Initialize viewer
   useEffect(() => {
-    if (!viewerRef.current || !iiifContent) return;
+    if (!viewerRef.current || (!iiifContent && !url)) return;
 
     if (osdViewerRef.current) {
       osdViewerRef.current.destroy();
@@ -82,7 +89,11 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
     osdViewerRef.current = OpenSeadragon({
       prefixUrl: '/openseadragon/images/',
       id: viewerRef.current.id,
-      tileSources: [{ tileSource: iiifContent }],
+      tileSources: [iiifContent ? { tileSource: iiifContent}  : {
+        type: 'image',
+        url,
+        buildPyramid: false,
+      }],
       minZoomLevel: 0.9,
       gestureSettingsMouse: {
         clickToZoom: allowZoom && !allowSelection,
@@ -90,7 +101,11 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
       showNavigator: true,
       showRotationControl: allowRotation,
       showFlipControl: allowFlip,
+      crossOriginPolicy: 'Anonymous'
     });
+    if (url) {
+      console.log(url, iiifContent)
+    }
 
     const viewer = osdViewerRef.current;
 
@@ -120,7 +135,7 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
         osdViewerRef.current.destroy();
       }
     };
-  }, [iiifContent]);
+  }, [iiifContent, url]);
 
   // Handle zoom changes
   useEffect(() => {
@@ -200,15 +215,19 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
     if (!viewer) return;
 
     viewer.clearOverlays();
-
-    points?.forEach((point, index) => {
-      viewer.addOverlay({
-        element: newPointIndicator(index + 1),
-        location: new OpenSeadragon.Point(point.x, point.y),
-        placement: OpenSeadragon.Placement.CENTER,
+    const pointObjs = points?.map((point: any, index) => {
+      return {
+        id: newPointIndicator(index+1),
+        px: point.x,
+        py: point.y,
+        placement: 'CENTER',
         checkResize: false,
-        rotationMode: OpenSeadragon.OverlayRotationMode.NO_ROTATION,
-      });
+        rotationMode: OpenSeadragon.OverlayRotationMode.NO_ROTATION
+      };
+    })
+
+    pointObjs?.forEach((pointObj) => {
+      viewer.addOverlay(pointObj);
     });
   }, [points]);
 
@@ -216,7 +235,7 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
     <div className="flex flex-col">
       <div 
         ref={viewerRef} 
-        id={`controlled-openseadragon-${iiifContent}`} 
+        id={`controlled-openseadragon-${iiifContent || url}`} 
         style={{ width: "600px", maxWidth: '600px', height: '600px', maxHeight: "600px" }} 
       />
     </div>
