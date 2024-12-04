@@ -108,6 +108,19 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
     }
 
     const viewer = osdViewerRef.current;
+    
+    // Set initial coordinates if available
+    if (coordinates && coordinates.length > 0) {
+      viewer.addOnceHandler('open', () => {
+        const bounds = new OpenSeadragon.Rect(
+          coordinates[0].x,
+          coordinates[0].y,
+          coordinates[1]?.x ? coordinates[1].x - coordinates[0].x : 1,
+          coordinates[1]?.y ? coordinates[1].y - coordinates[0].y : 1
+        );
+        viewer.viewport.fitBounds(bounds, true);
+      });
+    }
 
     if (allowRotation) {
       viewer.addHandler('rotate', () => {
@@ -230,6 +243,20 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
       viewer.addOverlay(pointObj);
     });
   }, [points]);
+
+  // Handle coordinates changes
+  useEffect(() => {
+    const viewer = osdViewerRef.current;
+    if (!viewer?.viewport || !coordinates || coordinates.length === 0) return;
+
+    const bounds = new OpenSeadragon.Rect(
+      coordinates[0].x,
+      coordinates[0].y,
+      coordinates[1]?.x ? coordinates[1].x - coordinates[0].x : 1,
+      coordinates[1]?.y ? coordinates[1].y - coordinates[0].y : 1
+    );
+    viewer.viewport.fitBounds(bounds, true);
+  }, [coordinates]);
 
   return (
     <div className="flex flex-col">
