@@ -1,7 +1,12 @@
 import numpy as np
 import pyvips
-from skimage import transform
+from skimage import transform, exposure
 import re
+from pystackreg import StackReg
+from pystackreg.util import to_uint16
+import sims
+from scipy import ndimage
+from PIL import Image
 
 
 def manipulate_image(image, angle, flip_hor):
@@ -204,6 +209,43 @@ def find_transformation(image1_path, image2_path, points1, points2):
 
     return translation, rotation, flip
 
+
+def image_from_im_file(im_file, species, autocontrast=False):
+    """
+    Extract image data for a specific species from an .im file
+    
+    Args:
+        im_file (str): Path to the .im file
+        species (str): Name of the species/isotope to extract
+        autocontrast (bool): Whether to apply autocontrast scaling
+        
+    Returns:
+        numpy.ndarray: Image data as a numpy array
+    """
+    mims = sims.SIMS(im_file)
+    if not mims or mims.data is None or mims.data.species is None:
+        raise ValueError("Invalid .im file")
+        
+    if species not in mims.data.species.values:
+        raise ValueError(f"Species {species} not found in .im file")
+
+    # Extract and register the isotope image
+    sr = StackReg(StackReg.AFFINE)
+    sr.register_stack(mims.data.loc[species].to_numpy(), reference="previous")
+    stacked = sr.transform_stack(mims.data.loc[species].to_numpy())
+    stacked = to_uint16(stacked)
+    species_summed = stacked.sum(axis=0)
+    species_summed = ndimage.median_filter(species_summed, size=1).astype(np.uint16)
+    
+    if autocontrast:
+        vmin, vmax = np.percentile(species_summed, (1, 99))
+        species_summed = exposure.rescale_intensity(
+            species_summed, 
+            in_range=(vmin, vmax), 
+            out_range=(0, 255)
+        ).astype(np.uint8)
+        
+    return species_summed
 
 # Example usage:
 # image1_path = 'path_to_first_image.png'
