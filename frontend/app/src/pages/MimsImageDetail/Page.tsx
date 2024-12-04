@@ -35,7 +35,7 @@ const fetchMimsImageDetail = async (id: string) => {
 const MimsImage = () => {
   const canvasStore = useCanvasViewer();
   const mimsStore = useMimsViewer();
-  const { setZoom: setEmZoom, setFlip: setEmFlip, setRotation: setEmRotation } = canvasStore;
+  const { setZoom: setEmZoom, setCoordinates: setEmCoordinates } = canvasStore;
   const { setZoom: setMimsZoom, setFlip: setMimsFlip, setRotation: setMimsRotation } = mimsStore;
   const [openseadragonOptions, setOpenseadragonOptions] = useState<any>({defaultZoomLevel: 1});
   const [savedEmPos, setSavedEmPos] = useState<any | null>(null);
@@ -60,9 +60,7 @@ const MimsImage = () => {
 
     const alignment = mimsImage?.alignments?.find((al: any) => al.id == alignmentId)
     if (alignment) {
-      setEmRotation(alignment?.rotation_degrees);
-      setEmFlip(alignment?.flip_hor);
-      setEmZoom(1/alignment?.scale);
+      setEmCoordinates([alignment?.x_offset, alignment?.y_offset]);
       setMimsRotation(alignment?.rotation_degrees);
       setMimsFlip(alignment?.flip_hor);
       setMimsZoom(1/alignment?.scale);
@@ -102,6 +100,7 @@ const MimsImage = () => {
       queryClient.invalidateQueries();
     })
   }
+  console.log(mimsImage);
   
   if (["AWAITING_REGISTRATION", "REGISTERING", "DEWARP PENDING"].indexOf(mimsImage?.status) !== -1 && mimsImage?.alignments?.length) {
     return <RegistrationPage />;
@@ -141,7 +140,7 @@ const MimsImage = () => {
                 allowZoom={true}
                 allowFlip={true}
                 allowRotation={true}
-                allowSelection={true}
+                allowSelection={false}
               />
           </div>
           </div>
@@ -156,10 +155,7 @@ const MimsImage = () => {
               ))}
             </TabsList>
           {mimsImage.isotopes?.map((isotope: any) => {
-            const options = {
-              degrees: Math.round(useCanvasViewer.getState().rotation),
-              flipped: useCanvasViewer.getState().flip
-            }
+            const url = `http://localhost:8000/api/mims_image/${mimsImage.id}/image.png?species=${isotope.name}&autocontrast=true`
             return (
               <TabsContent key={isotope.name} value={isotope.name}>
                 <div className="flex items-center justify-between">
@@ -171,12 +167,12 @@ const MimsImage = () => {
                   </div>
                 </div>
                 <ControlledOpenSeaDragon 
-                  iiifContent={isotope.url}
+                  url={url}
                   canvasStore={mimsStore}
                   allowZoom={true}
                   allowFlip={true}
                   allowRotation={true}
-                  allowSelection={true}
+                  allowSelection={false}
                 />
               </TabsContent>
           )})}
