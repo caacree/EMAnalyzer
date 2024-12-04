@@ -60,7 +60,13 @@ const MimsImage = () => {
 
     const alignment = mimsImage?.alignments?.find((al: any) => al.id == alignmentId)
     if (alignment) {
-      setEmCoordinates([alignment?.x_offset, alignment?.y_offset]);
+      const pixelSizeRatio = mimsImage.pixel_size_nm / 5;
+      const offset = 512 * pixelSizeRatio;
+      
+      setEmCoordinates([
+        { x: alignment?.x_offset, y: alignment?.y_offset },
+        { x: alignment?.x_offset + offset, y: alignment?.y_offset + offset }
+      ]);
       setMimsRotation(alignment?.rotation_degrees);
       setMimsFlip(alignment?.flip_hor);
       setMimsZoom(1/alignment?.scale);
