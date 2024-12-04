@@ -108,7 +108,6 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
     
     // Set initial coordinates if available
     if (coordinates && coordinates.length > 0) {
-      console.log("here")
       viewer.addOnceHandler('open', () => {
         const tiledImage = viewer.world.getItemAt(0);
         if (!tiledImage) return;
@@ -125,6 +124,7 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
           bottomRight.x - topLeft.x,
           bottomRight.y - topLeft.y
         );
+        console.log(bounds);
         viewer.viewport.fitBounds(bounds, true);
       });
     }
@@ -254,11 +254,10 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
   // Handle coordinates changes
   useEffect(() => {
     const viewer = osdViewerRef.current;
-    console.log("1")
     if (!viewer?.viewport || !coordinates || coordinates.length === 0) return;
-    console.log("2", coordinates)
     
     const tiledImage = viewer.world.getItemAt(0);
+    console.log("uh", coordinates, tiledImage)
     if (!tiledImage) return;
 
     // Convert image coordinates to viewport coordinates
@@ -273,6 +272,7 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
       bottomRight.x - topLeft.x,
       bottomRight.y - topLeft.y
     );
+    console.log(bounds)
     viewer.viewport.fitBounds(bounds, true);
   }, [coordinates]);
 
