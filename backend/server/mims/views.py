@@ -1,8 +1,10 @@
 from django.shortcuts import get_object_or_404
+from django.http import HttpResponse
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 import json
 from rest_framework.decorators import action
+from mims.services.image_utils import image_from_im_file
 from mims.services.registration_utils import (
     mask_to_polygon,
 )
@@ -191,6 +193,30 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
         return Response(
             {"message": "MIMS image reset successfully"}, status=status.HTTP_200_OK
         )
+
+    @action(detail=True, methods=["get"], url_path="image.png")
+    def image_png(self, request, pk=None):
+        """Get a PNG image for a specific species from the MIMS image file"""
+        mims_image = get_object_or_404(MIMSImage, pk=pk)
+        species = request.query_params.get('species')
+        autocontrast = request.query_params.get('autocontrast', 'false').lower() == 'true'
+        
+        if not species:
+            return Response(
+                {"error": "species parameter is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            image_data = image_from_im_file(mims_image.file.path, species, autocontrast)
+            response = HttpResponse(content_type='image/png')
+            Image.fromarray(image_data).save(response, format='PNG')
+            return response
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     @action(detail=True, methods=["post"])
     def outside_canvas(self, request, pk=None):
