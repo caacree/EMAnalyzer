@@ -41,5 +41,7 @@ class CanvasObj(AbstractBaseModel):
 
     flip = models.BooleanField(default=False)
     rotation_degrees = models.IntegerField(null=True)
-    canvas_bbox = models.JSONField(null=True, help_text="Array of 4 [x,y] coordinates defining bounding box")
+    canvas_bbox = models.JSONField(
+        null=True, help_text="Array of 4 [x,y] coordinates defining bounding box"
+    )
     pixel_size_nm = models.FloatField(null=True)

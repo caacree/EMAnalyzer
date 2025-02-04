@@ -1,7 +1,17 @@
 // src/queries.ts
+import api from '@/api/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchImages, createImage, deleteImage } from '@/api/api';
 import { createCanvas, deleteCanvas, fetchCanvasList } from '../api/api';
+
+export const usePrepareCanvasForGuiQuery = (canvasId: string) => useQuery({
+    queryKey: ['canvas', canvasId, 'prepare'],
+    queryFn: () => canvasId ? api.get(`/canvas/${canvasId}/prepare_for_gui`) : null,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchInterval: false,
+  });
 
 export const useEMImagesQuery = () =>
   useQuery({

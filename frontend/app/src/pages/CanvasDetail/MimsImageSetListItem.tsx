@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import api from "../../api/api";
 import { TrashIcon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useCanvasViewer } from "@/stores/canvasViewer";
 
 
 const STATUS_PRIORITY_MAP: { [key: string]: number } = {
@@ -12,14 +13,36 @@ const STATUS_PRIORITY_MAP: { [key: string]: number } = {
   "REGISTERING": 5,
   "NO_CELLS": 6,
   "DEWARP PENDING": 3,
-  "AWAITING_REGISTRATION": -1
+  "AWAITING_REGISTRATION": -1,
+  "OUTSIDE_CANVAS": 9
 }
 const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect: any }) => {
   const queryClient = useQueryClient();
   const handleDeleteMimsSet = (imageSetId: string) => {
-    console.log("?")
     api.delete(`/mims_image_set/${imageSetId}/`).then(() => queryClient.invalidateQueries());
-  }
+  };
+  const canvasStore = useCanvasViewer();
+
+  const updateHoverImg = (hoveredId: string | null) => {
+    canvasStore.overlays.filter(overlay => overlay.data?.type === "hover").forEach(overlay => {
+      canvasStore.removeOverlay(overlay.id);
+    });
+    if (hoveredId) {
+      const hoverImgBbox = mimsImageSet.mims_images.find((mimsImage: any) => mimsImage.id === hoveredId)?.canvas_bbox;
+      if (hoverImgBbox) {
+        const newOverlay = {
+          id: hoveredId,
+          visible: true,
+          data: {
+            type: "hover",
+            bbox: hoverImgBbox,
+        }
+      };
+      canvasStore.addOverlay(newOverlay);
+      }
+    }
+  };
+
   return (
     <div className="flex flex-col">
       <div className="flex gap-1 items-center">
@@ -37,8 +60,8 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
         const b_priority = STATUS_PRIORITY_MAP[b.status as string];
         return (a_priority <= b_priority ? -1 : 1); 
       }).map((mimsImage: any) => (
-        <div key={mimsImage.id} className="flex items-center gap-2">
-          <Link to={`/mims_image/${mimsImage.id}`}>
+        <div key={mimsImage.id} className="flex items-center gap-2" onMouseEnter={() => updateHoverImg(mimsImage.id)} onMouseLeave={() => updateHoverImg(null)}>
+          <Link to={`/mims_image/${mimsImage.id}`} disabled={mimsImage.status === "OUTSIDE_CANVAS"}>
             {extractFileName(mimsImage.file)}
           </Link>
           <button>{mimsImage.status}</button>

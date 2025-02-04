@@ -8,6 +8,7 @@ from mims.services.image_utils import image_from_im_file
 from mims.services.registration_utils import (
     mask_to_polygon,
 )
+from mims.services.prepare_registration_images import prepare_registration_images
 from core.models import Canvas
 from .models import MIMSAlignment, MIMSImageSet, MIMSImage
 from .serializers import MIMSImageSetSerializer, MIMSImageSerializer
@@ -16,6 +17,7 @@ from .tasks import (
     preprocess_mims_image_set,
     register_images_task,
 )
+from mims.services.register import register_images
 from mims.services.orient_images import orient_viewset
 import os
 from PIL import Image
@@ -75,6 +77,62 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
     queryset = MIMSImage.objects.all()
     serializer_class = MIMSImageSerializer
 
+    @action(detail=True, methods=["get"])
+    def is_segmentation_ready(self, request, pk=None):
+        mims_image = get_object_or_404(MIMSImage, pk=pk)
+        isotopes = [i.name for i in mims_image.isotopes.all()]
+        for image_key in isotopes + ["em"]:
+            if image_key not in predictors:
+                return Response(False)
+        return Response(True)
+
+    @action(detail=True, methods=["get"])
+    def prepare_for_segmentation(self, request, pk=None):
+        mims_image = get_object_or_404(MIMSImage, pk=pk)
+        prepare_registration_images(mims_image)
+        mims_bbox = mims_image.canvas_bbox
+        # calculate em bbox by finding the min and max x and y of the canvas bbox
+        em_bbox = [
+            max(0, int(min([m[0] for m in mims_bbox])) - 1000),
+            max(0, int(min([m[1] for m in mims_bbox])) - 1000),
+            int(max([m[0] for m in mims_bbox])) + 1000,
+            int(max([m[1] for m in mims_bbox])) + 1000,
+        ]
+
+        isotopes = [i.name for i in mims_image.isotopes.all()]
+
+        # Prepare predictors for each possible image_key and 'em'
+        image_keys = isotopes + ["em"]
+        em = np.array(Image.open(mims_image.canvas.images.first().file.path))
+        device = torch.device("mps")
+        checkpoint = "/Users/chris/Documents/lab/emAnalysis/backend/segment-anything-2/checkpoints/sam2_hiera_large.pt"
+        model_cfg = "sam2_hiera_l.yaml"
+        for image_key in image_keys:
+            predictor_key = f"{pk}_{image_key}"
+            if predictor_key not in predictors:
+                if image_key != "em":
+                    image = image_from_im_file(mims_image.file.path, image_key, True)
+                else:
+                    em_cropped = em[em_bbox[1] : em_bbox[3], em_bbox[0] : em_bbox[2]]
+                    image = em_cropped
+                # Convert image to 3 channels if it's single-channel
+                if image.ndim == 2:  # If the image is grayscale
+                    image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+
+                predictor = SAM2ImagePredictor(
+                    build_sam2(model_cfg, checkpoint, device)
+                )
+
+                predictor.set_image(image)
+                predictors[predictor_key] = predictor
+        full_em_predictor = SAM2ImagePredictor(
+            build_sam2(model_cfg, checkpoint, device)
+        )
+        full_em_predictor.set_image(em)
+        # predictors[f"{pk}_em"] = full_em_predictor
+
+        return Response(status=status.HTTP_200_OK)
+
     @action(detail=True, methods=["post"])
     def set_alignment(self, request, pk=None):
         # Get the MIMSImage instance
@@ -121,14 +179,23 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
         mims_image = get_object_or_404(MIMSImage, pk=pk)
         image_key = request.data.get("image_key", "em")
         predictor_key = f"{pk}_{image_key}"
-        if predictor_key not in predictors:
-            mims_path = Path(mims_image.file.path)
-            reg_loc = os.path.join(mims_path.parent, mims_path.stem, "registration")
-            if image_key != "em":
-                reg_loc = os.path.join(mims_path.parent, mims_path.stem, "isotopes")
-                image_key = f"{image_key}_autocontrast"
-            image = np.array(Image.open(os.path.join(reg_loc, f"{image_key}.png")))
+        mims_bbox = mims_image.canvas_bbox
+        # calculate em bbox by finding the min and max x and y of the canvas bbox
+        em_bbox = [
+            max(0, int(min([m[0] for m in mims_bbox])) - 1000),
+            max(0, int(min([m[1] for m in mims_bbox])) - 1000),
+            int(max([m[0] for m in mims_bbox])) + 1000,
+            int(max([m[1] for m in mims_bbox])) + 1000,
+        ]
 
+        if predictor_key not in predictors:
+            print(f"Creating predictor for {predictor_key}")
+            if image_key != "em":
+                image = image_from_im_file(mims_image.file.path, image_key, True)
+            else:
+                em = np.array(Image.open(mims_image.canvas.images.first().file.path))
+                em_cropped = em[em_bbox[1] : em_bbox[3], em_bbox[0] : em_bbox[2]]
+                image = em_cropped
             # Convert image to 3 channels if it's single-channel
             if image.ndim == 2:  # If the image is grayscale
                 image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
@@ -144,12 +211,19 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
         predictor = predictors[predictor_key]
         input_points = np.array(request.data.get("point_coords"))
         input_labels = np.array(request.data.get("point_labels"))
+        if image_key == "em":
+            input_points = [
+                [p[0] - em_bbox[0], p[1] - em_bbox[1]] for p in input_points
+            ]
         # print the max and min for each of x and y in the input points
         masks, scores, logits = predictor.predict(
             point_coords=input_points, point_labels=input_labels
         )
         highest_mask = masks[np.argmax(scores)]
-        polygons = mask_to_polygon(highest_mask)
+        if image_key == "em":
+            polygons = mask_to_polygon(highest_mask, translate=[em_bbox[0], em_bbox[1]])
+        else:
+            polygons = mask_to_polygon(highest_mask)
         # print max and min x and y of the polygon
         return Response({"polygons": polygons})
 
@@ -161,14 +235,15 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
                 {"message": "MIMS image is not ready for registration"},
                 status=status.HTTP_400_BAD_REQUEST,
             )"""
-        # mims_image.status = "REGISTERING"
-        # mims_image.save()
+        mims_image.status = "REGISTERING"
+        mims_image.save()
 
         em_shapes = request.data.get("em_shapes")
         mims_shapes = request.data.get("mims_shapes")
 
         mims_path = Path(mims_image.file.path)
         reg_loc = os.path.join(mims_path.parent, mims_path.stem, "registration")
+        os.makedirs(reg_loc, exist_ok=True)
         with open(os.path.join(reg_loc, "reg_shapes.json"), "w") as shapes_file:
             shapes_file.write(
                 json.dumps({"em_shapes": em_shapes, "mims_shapes": mims_shapes})
@@ -198,25 +273,24 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
     def image_png(self, request, pk=None):
         """Get a PNG image for a specific species from the MIMS image file"""
         mims_image = get_object_or_404(MIMSImage, pk=pk)
-        species = request.query_params.get('species')
-        autocontrast = request.query_params.get('autocontrast', 'false').lower() == 'true'
-        
+        species = request.query_params.get("species")
+        autocontrast = (
+            request.query_params.get("autocontrast", "false").lower() == "true"
+        )
+
         if not species:
             return Response(
-                {"error": "species parameter is required"}, 
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "species parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
             image_data = image_from_im_file(mims_image.file.path, species, autocontrast)
-            response = HttpResponse(content_type='image/png')
-            Image.fromarray(image_data).save(response, format='PNG')
+            response = HttpResponse(content_type="image/png")
+            Image.fromarray(image_data).save(response, format="PNG")
             return response
         except ValueError as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=["post"])
     def outside_canvas(self, request, pk=None):

@@ -1,10 +1,14 @@
 {
   "compilerOptions": {
     "target": "ES2020",
+    "typeRoots": ["./node_modules/@types", "./types"],
     "useDefineForClassFields": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    },
 
     /* Bundler mode */
     "moduleResolution": "bundler",
@@ -20,6 +24,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "public/openseadragon-svg-overlay.js"],
+  "include": ["src", "public/openseadragon-svg-overlay.js", "types"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

@@ -213,19 +213,19 @@ def find_transformation(image1_path, image2_path, points1, points2):
 def image_from_im_file(im_file, species, autocontrast=False):
     """
     Extract image data for a specific species from an .im file
-    
+
     Args:
         im_file (str): Path to the .im file
         species (str): Name of the species/isotope to extract
         autocontrast (bool): Whether to apply autocontrast scaling
-        
+
     Returns:
         numpy.ndarray: Image data as a numpy array
     """
     mims = sims.SIMS(im_file)
     if not mims or mims.data is None or mims.data.species is None:
         raise ValueError("Invalid .im file")
-        
+
     if species not in mims.data.species.values:
         raise ValueError(f"Species {species} not found in .im file")
 
@@ -236,16 +236,15 @@ def image_from_im_file(im_file, species, autocontrast=False):
     stacked = to_uint16(stacked)
     species_summed = stacked.sum(axis=0)
     species_summed = ndimage.median_filter(species_summed, size=1).astype(np.uint16)
-    
+
     if autocontrast:
         vmin, vmax = np.percentile(species_summed, (1, 99))
         species_summed = exposure.rescale_intensity(
-            species_summed, 
-            in_range=(vmin, vmax), 
-            out_range=(0, 255)
+            species_summed, in_range=(vmin, vmax), out_range=(0, 255)
         ).astype(np.uint8)
-        
+
     return species_summed
+
 
 # Example usage:
 # image1_path = 'path_to_first_image.png'

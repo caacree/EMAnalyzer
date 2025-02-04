@@ -37,8 +37,8 @@ export const deleteImage = async (id: string) => {
   return res.data;
 };
 
-export const postImageSetPoints = async (imageSetId: string, points: any[], isotope: string) => {
-  api.post(`mims_image_set/${imageSetId}/submit_viewset_alignment_points/`, {points, isotope});
+export const postImageSetPoints = async (imageSetId: string, points: any, isotope: string) => {
+  return api.post(`mims_image_set/${imageSetId}/submit_viewset_alignment_points/`, {points, isotope});
 }
 
 export default api;

@@ -1,17 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Link, Route, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import React, { useEffect, useRef, useState } from "react";
+import { Link,  useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import React, { useEffect,  useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/api";
 import ControlledOpenSeaDragon from '@/components/shared/ControlledOpenSeaDragon';
 import { useCanvasViewer } from "@/stores/canvasViewer";
 import { useMimsViewer } from "@/stores/mimsViewer";
 import MIMSImageSet from "./MimsImageSetListItem";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/shared/ui/tabs";
-import { Checkbox } from "../../components/shared/ui/checkbox";
-import { Slider } from "../../components/shared/ui/slider";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/shared/ui/tabs";
+import { Checkbox } from "@/components/shared/ui/checkbox";
+import { Slider } from "@/components/shared/ui/slider";
 import { XCircleIcon } from "lucide-react";
-import { postImageSetPoints } from "../../api/api";
+import { postImageSetPoints } from "@/api/api";
+import { cn } from "@/lib/utils";
+import { usePrepareCanvasForGuiQuery } from "@/queries/queries";
 
 const fetchCanvasDetail = async (id: string) => {
   const res = await api.get(`canvas/${id}/`);
@@ -32,27 +34,13 @@ const CanvasDetail = () => {
   const navigate = useNavigate({ from: window.location.pathname });
   const canvasStore = useCanvasViewer();
   const mimsStore = useMimsViewer();
-  const {setFlip: setEmFlip, setRotation: setEmRotation} = canvasStore;
   const {setFlip: setMimsFlip, setRotation: setMimsRotation} = mimsStore;
   const [isSelectingPoints, setIsSelectingPoints] = useState(false);
-  const [points, setPoints] = useState<any>({ em: [], mims: [] });
-  const handleEMClickRef = useRef((point: any) => {});
-  const handleMimsClickRef = useRef((point: any) => {});
   const [files, setFiles] = useState<File[]>([]);
-  useEffect(() => {
-    handleEMClickRef.current = (point: any) => {
-      if (isSelectingPoints && point && points?.em.length < 3) {
-        setPoints({ ...points, em: [...points.em, point] });
-      }
-    };
-    handleMimsClickRef.current = (point: any) => {
-      if (isSelectingPoints && point && points?.mims.length < 3) {
-        setPoints({ ...points, mims: [...points.mims, point] });
-      }
-    }
-  }, [isSelectingPoints, points]);
+  const points = {em: canvasStore.points, mims: mimsStore.points};
 
   const image = canvas?.images?.[0];
+  usePrepareCanvasForGuiQuery(canvasId as string);
 
   useEffect(() => {
     if (image && mimsImageSet) {
@@ -61,10 +49,9 @@ const CanvasDetail = () => {
         return;
       }
       const degrees = (selectedMimsSet?.rotation_degrees) % 360
-      setEmFlip(selectedMimsSet?.flip);
-      setEmRotation(degrees);
       setMimsFlip(selectedMimsSet?.flip);
       setMimsRotation(degrees);
+      setSelectedIsotope(Object.keys(selectedMimsSet?.composite_images)[0]);
     }
   }, [canvas, mimsImageSet]);
     
@@ -102,52 +89,21 @@ const CanvasDetail = () => {
   }
 
   const submitImageSetPoints = () => {
-    postImageSetPoints(mimsImageSet, points, selectedIsotope);
+    postImageSetPoints(mimsImageSet, points, selectedIsotope).then(() => {
+      canvasStore.clearPoints();
+      mimsStore.clearPoints();
+    })
   }  
 
   const selectedMimsSet = canvas?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSet);
   return (
-    <div className="w-full flex flex-col ml-10 gap-5">
+    <div className="w-full flex flex-col ml-10 gap-5 max-h-[80%]">
       <div className="flex gap-20">
         <Link to={`/canvas/${canvas.id}`}>
           <h2 className="flex gap-20">Canvas: {canvas.name}</h2>
         </Link>
         <div>{selectedMimsSet ? `Selected Mims Image Set: ${selectedMimsSet.id}` : null}</div>
       </div>
-      {selectedMimsSet ? (
-        <div>
-          <div className="flex gap-2 items-center">
-            <div>Select points</div>
-            <Checkbox checked={isSelectingPoints} onCheckedChange={setIsSelectingPoints} />
-          </div>
-          <div className="flex flex-col">
-            <div>Selected Points</div>
-            {[0,1,2].map((point, index) => {
-              if (!points.em[index] && !points.mims[index]) {
-                return null;
-              }
-              return (
-              <div key={point} className={`flex gap-4 items-center`}>
-                <div>
-                  EM {index + 1}: {points.em[index]?.x.toFixed(2)}, {points.em[index]?.y.toFixed(2)}
-                </div>
-                <div>
-                  MIMS {index + 1}: {points.mims[index]?.x.toFixed(2)}, {points.mims[index]?.y.toFixed(2)}
-                </div>
-                <XCircleIcon onClick={() => {
-                  setPoints((prev: any) => ({
-                    em: prev.em.filter((_:any, i:any) => i !== index),
-                    mims: prev.mims.filter((_:any, i:any) => i !== index)
-                  }));
-                }} className="cursor-pointer" />
-              </div>
-            )})}
-            {(points.em?.length === 3 && points.mims?.length === 3) ? (
-              <button onClick={submitImageSetPoints}>Submit points</button>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
       <div className="flex w-full">
         <div className="flex w-1/2">
           <ControlledOpenSeaDragon 
@@ -156,10 +112,11 @@ const CanvasDetail = () => {
             allowZoom={true}
             allowFlip={false}
             allowRotation={false}
+            allowPointSelection={isSelectingPoints}
           />
         </div>
         <div className="flex w-1/2">
-          <div className="flex flex-col gap-3">
+          <div className={cn("flex flex-col gap-3", !mimsImageSet && "max-h-[600px] overflow-scroll")}>
             {!mimsImageSet ? (
               <>
                 <div>MIMS Image sets</div>
@@ -185,15 +142,15 @@ const CanvasDetail = () => {
                     <TabsContent key={isotope} value={isotope}>
                       <div className="flex items-center justify-between">
                         <div className="flex gap-2 items-center">
-                          Flip: <Checkbox checked={useMimsViewer.getState().flip} onCheckedChange={setMimsFlip} />
+                          Flip: <Checkbox checked={mimsStore.flip} onCheckedChange={setMimsFlip} />
                         </div>
                         <div className="flex gap-2 items-center">
                           Rotation:<Slider 
-                            value={[useMimsViewer.getState().rotation]} 
+                            value={[mimsStore.rotation]} 
                             min={0} 
                             max={360} 
                             onValueChange={(val) => setMimsRotation(Math.round(val[0]))} 
-                          />{useMimsViewer.getState().rotation}&deg;
+                          />{mimsStore.rotation}&deg;
                         </div>
                       </div>
                       <ControlledOpenSeaDragon 
@@ -202,7 +159,7 @@ const CanvasDetail = () => {
                         allowZoom={true}
                         allowFlip={true}
                         allowRotation={true}
-                        allowSelection={isSelectingPoints}
+                        allowPointSelection={isSelectingPoints}
                       />
                     </TabsContent>
                   )})}
@@ -226,6 +183,36 @@ const CanvasDetail = () => {
           </div>
         </div>
       </div>
+      {selectedMimsSet ? (
+        <div className="flex flex-col">
+          <div className="flex gap-2 items-center">
+            <div>Select points</div>
+            <Checkbox checked={isSelectingPoints} onCheckedChange={setIsSelectingPoints} />
+          </div>
+          <div>Selected Points</div>
+          {[...Array(Math.max(points.em?.length, points.mims?.length))].map((_, index) => {
+            if (!points.em[index] && !points.mims[index]) {
+              return null;
+            }
+            return (
+            <div key={index} className={`flex gap-4 items-center`}>
+              <div>
+                EM {index + 1}: {points.em[index]?.x.toFixed(2)}, {points.em[index]?.y.toFixed(2)}
+              </div>
+              <div>
+                MIMS {index + 1}: {points.mims[index]?.x.toFixed(2)}, {points.mims[index]?.y.toFixed(2)}
+              </div>
+              <XCircleIcon onClick={() => {
+                canvasStore.removePoint(index);
+                mimsStore.removePoint(index);
+              }} className="cursor-pointer" />
+            </div>
+          )})}
+          {(points.em?.length === 3 && points.mims?.length === 3) ? (
+            <button onClick={submitImageSetPoints}>Submit points</button>
+          ) : null}
+        </div>
+        ) : null}
     </div>
   );
 };

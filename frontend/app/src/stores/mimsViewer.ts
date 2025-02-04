@@ -1,8 +1,11 @@
 import { create } from 'zustand'
 
 interface Point {
+  id: string
   x: number
   y: number
+  type?: string
+  color?: string
 }
 
 interface Overlay {
@@ -15,11 +18,13 @@ interface MimsViewerState {
   zoom: number
   flip: boolean
   rotation: number
+  coordinates: Point[]
   points: Point[]
   overlays: Overlay[]
   setZoom: (zoom: number) => void
   setFlip: (flip: boolean) => void
   setRotation: (rotation: number) => void
+  setCoordinates: (coordinates: Point[]) => void
   addPoint: (point: Point) => void
   removePoint: (index: number) => void
   clearPoints: () => void
@@ -33,12 +38,14 @@ export const useMimsViewer = create<MimsViewerState>((set) => ({
   zoom: 1,
   flip: false,
   rotation: 0,
+  coordinates: [],
   points: [],
   overlays: [],
   
   setZoom: (zoom) => set({ zoom }),
   setFlip: (flip) => set({ flip }),
   setRotation: (rotation) => set({ rotation }),
+  setCoordinates: (coordinates) => set({ coordinates }),
   
   addPoint: (point) => set((state) => ({ 
     points: [...state.points, point] 

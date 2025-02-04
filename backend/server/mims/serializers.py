@@ -55,8 +55,7 @@ class MIMSImageSetSerializer(serializers.ModelSerializer):
             "composite_images",
             "flip",
             "rotation_degrees",
-            "canvas_x",
-            "canvas_y",
+            "canvas_bbox",
             "pixel_size_nm",
             "mims_images",
         ]
@@ -107,9 +106,6 @@ class MIMSAlignmentSerializer(serializers.ModelSerializer):
 class MIMSImageSerializer(serializers.ModelSerializer):
     isotopes = serializers.SerializerMethodField()
     image_set = MIMSImageSetSerializer(read_only=True)
-    alignments = MIMSAlignmentSerializer(
-        many=True, read_only=True
-    )  # Include alignments
     em_dzi = serializers.SerializerMethodField()
     registration = serializers.SerializerMethodField()
 
@@ -124,7 +120,7 @@ class MIMSImageSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "isotopes",
-            "alignments",
+            "canvas_bbox",
             "em_dzi",
             "registration",
         ]

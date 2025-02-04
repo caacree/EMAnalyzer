@@ -1,15 +1,16 @@
 import numpy as np
 from skimage.transform import estimate_transform
-import sims
 from PIL import Image
 import math
+from mims.services.image_utils import image_from_im_file
 from mims.model_utils import (
     get_concatenated_image,
-    get_autocontrast_image_path,
+    load_images_and_bboxes,
 )
 import cv2
 from PIL import ImageOps
 import time
+from skimage.draw import polygon
 
 
 def calculate_transformation_error(tform, src_points, dst_points):
@@ -68,19 +69,43 @@ def calculate_translations(
         mims_pt = mims_points[i]
         em_pt = em_points[i]
         # 1. Rotate, then flip, then scale and see the translation from the EM point
-        print("1", mims_pt, rotation_degrees, flip)
         mims_pt = rotate_and_flip_point(
             mims_pt, rotation_degrees, composite_image, expanded_composite_image, flip
         )
-        print("2", mims_pt)
         mims_pt = [p * scale for p in mims_pt]
         y_translations += [em_pt[1] - mims_pt[1]]
         x_translations += [em_pt[0] - mims_pt[0]]
 
-    print(f"X translations: {x_translations}, Y translations: {y_translations}")
     x_trans = sum(x_translations) / len(x_translations)
     y_trans = sum(y_translations) / len(y_translations)
     return [y_trans, x_trans]
+
+
+def get_points_transform(mims_imageviewset, mims_points, em_points):
+    tform_no_flip = estimate_transform("similarity", mims_points, em_points)
+    error_no_flip = calculate_transformation_error(
+        tform_no_flip, mims_points, em_points
+    )
+    ims, bboxes = load_images_and_bboxes(mims_imageviewset, "SE", flip=True)
+    max_x = np.max([pos[0] for bbox in bboxes for pos in bbox])
+
+    # Scenario 2: Flip the MIMS points horizontally (flip x-coordinates)
+    mims_points_flipped = mims_points.copy()
+    mims_points_flipped[:, 0] = -mims_points_flipped[:, 0]  # Flip x-coordinates
+    # Shift all x-coordinates to ensure they are positive
+    mims_points_flipped[:, 0] += abs(max_x)
+
+    tform_with_flip = estimate_transform("similarity", mims_points_flipped, em_points)
+    error_with_flip = calculate_transformation_error(
+        tform_with_flip, mims_points_flipped, em_points
+    )
+    if error_with_flip < error_no_flip:
+        selected_tform = tform_with_flip
+        flip = True
+    else:
+        selected_tform = tform_no_flip
+        flip = False
+    return selected_tform, flip
 
 
 def orient_viewset(mims_imageviewset, points, isotope):
@@ -96,53 +121,38 @@ def orient_viewset(mims_imageviewset, points, isotope):
     em_points = np.array([[point["x"], point["y"]] for point in points["em"]])
     mims_points = np.array([[point["x"], point["y"]] for point in points["mims"]])
 
-    tform_no_flip = estimate_transform("similarity", mims_points, em_points)
-    error_no_flip = calculate_transformation_error(
-        tform_no_flip, mims_points, em_points
-    )
-
-    # Scenario 2: Flip the MIMS points horizontally (flip x-coordinates)
-    mims_points_flipped = mims_points.copy()
-    mims_points_flipped[:, 1] = -mims_points_flipped[:, 1]  # Flip x-coordinates
-
-    tform_with_flip = estimate_transform("similarity", mims_points_flipped, em_points)
-    error_with_flip = calculate_transformation_error(
-        tform_with_flip, mims_points_flipped, em_points
-    )
-
-    if error_with_flip < error_no_flip:
-        selected_tform = tform_with_flip
-        flip = True
-    else:
-        selected_tform = tform_no_flip
-        flip = False
+    transform, flip = get_points_transform(mims_imageviewset, mims_points, em_points)
 
     # Extract transformation parameters
-    scale = selected_tform.scale
-    rotation_radians = selected_tform.rotation
-    rotation_degrees = np.degrees(rotation_radians)
+    scale = transform.scale
+    rotation_radians = transform.rotation
+    rotation_degrees = -np.degrees(rotation_radians)
+    translation = transform.translation
+
     if rotation_degrees < 0:
         rotation_degrees += 360
 
-    print(f"Rotation: {rotation_degrees}, Flip: {flip}, Scale: {scale}")
-
-    # Get translation in coordinates the way we will calculate them in the rest of the app
-    composite_image = Image.fromarray(get_concatenated_image(mims_imageviewset, "32S"))
-    translation = calculate_translations(
-        mims_points, em_points, composite_image, rotation_degrees, flip, scale
-    )
+    ims, bboxes = load_images_and_bboxes(mims_imageviewset, isotope, flip=flip)
+    min_x = np.min([pos[0] for bbox in bboxes for pos in bbox])
+    min_y = np.min([pos[1] for bbox in bboxes for pos in bbox])
+    max_x = np.max([pos[0] for bbox in bboxes for pos in bbox])
+    max_y = np.max([pos[1] for bbox in bboxes for pos in bbox])
+    bbox = np.array([[min_x, min_y], [max_x, min_y], [max_x, max_y], [min_x, max_y]])
+    transformed_bbox = transform(bbox)
 
     mims_imageviewset.flip = flip
     mims_imageviewset.rotation_degrees = rotation_degrees
-    mims_imageviewset.canvas_x = translation[1]
-    mims_imageviewset.canvas_y = translation[0]
+    mims_imageviewset.canvas_bbox = transformed_bbox.tolist()
     mims_imageviewset.pixel_size_nm = (
         mims_imageviewset.canvas.pixel_size_nm or 5
     ) * scale
-    print(f"Scaled by {scale}, rotated by {rotation_degrees}, flipped: {flip}")
+
+    print(
+        f"Scaled by {scale}, rotated by {rotation_degrees}, flipped: {flip}, translated by {translation}"
+    )
     mims_imageviewset.save()
 
-    calculate_individual_mims_translations(mims_imageviewset, isotope)
+    calculate_individual_mims_translations(mims_imageviewset, isotope, transform, flip)
     return
 
 
@@ -154,7 +164,70 @@ def largest_inner_square(side_length, angle):
     )
 
 
-def calculate_individual_mims_translations(mims_imageviewset, isotope):
+def calculate_individual_mims_translations(
+    mims_imageviewset, isotope, transform_matrix, flip=False
+):
+    mims_images = mims_imageviewset.mims_images.all()
+
+    # Load the aggregate positions and dimensions of the ROI
+    ims, bboxes = load_images_and_bboxes(mims_imageviewset, isotope, flip)
+    em_img = np.array(Image.open(mims_imageviewset.canvas.images.first().file.path))
+    em_shape = em_img.shape
+
+    for mims_image in mims_images:
+        mims_image.flip = flip
+        mims_image.rotation_degrees = mims_imageviewset.rotation_degrees
+        mims_image.pixel_size_nm = mims_imageviewset.pixel_size_nm
+
+        filename = mims_image.file.name.split("/")[-1].split(".")[0]
+        roi = filename.split("_")[-1]
+
+        # Define the ROI corners in the local coordinate space
+        corners = np.array(bboxes[int(roi) - 1])
+
+        transformed_corners = transform_matrix(corners)
+
+        min_x = int(np.min(transformed_corners[:, 0]))
+        min_y = int(np.min(transformed_corners[:, 1]))
+        max_x = int(np.max(transformed_corners[:, 0])) + 1
+        max_y = int(np.max(transformed_corners[:, 1])) + 1
+        mims_image.canvas_bbox = transformed_corners.tolist()
+
+        if max_x < 0 or min_x > em_shape[1] or max_y < 0 or min_y > em_shape[0]:
+            mims_image.status = "OUTSIDE_CANVAS"
+            mims_image.save()
+            continue
+
+        # Crop the em_img to the bounding box
+        cropped_em_img = em_img[max(0, min_y) : max_y, max(0, min_x) : max_x]
+        print(f"Roi {roi}: {cropped_em_img.shape}, {min_x}, {min_y}, {max_x}, {max_y}")
+
+        # Adjust the transformed corners to the cropped image coordinates
+        adjusted_corners = transformed_corners - [max(0, min_x), max(0, min_y)]
+
+        # Create a mask for the transformed polygon within the cropped region
+        mask = np.zeros(cropped_em_img.shape[:2], dtype=np.uint8)
+        rr, cc = polygon(adjusted_corners[:, 1], adjusted_corners[:, 0], mask.shape)
+        mask[rr, cc] = 1
+
+        # Use the mask to calculate the maximum value inside the polygon
+        # Ensure that the mask is correctly applied
+        masked_values = cropped_em_img[mask == 1]
+        if masked_values.size == 0:
+            em_max_val = 0
+        else:
+            em_max_val = np.max(masked_values)
+
+        if em_max_val == 0:
+            mims_image.status = "OUTSIDE_CANVAS"
+            mims_image.save()
+            continue
+
+        mims_image.status = "NEED_USER_ALIGNMENT"
+        mims_image.save()
+
+
+def calculate_individual_mims_translations2(mims_imageviewset, isotope):
     start = time.time()
     # Print seconds elapsed
     mims_images = mims_imageviewset.mims_images.all()
@@ -166,12 +239,12 @@ def calculate_individual_mims_translations(mims_imageviewset, isotope):
     )
     if isotope == "32S":
         composite_image = ImageOps.invert(composite_image)
-    composite_image = composite_image.rotate(-rotation_degrees, expand=True)
     if flip:
         composite_image = composite_image.transpose(Image.FLIP_LEFT_RIGHT)
+    composite_image = composite_image.rotate(-rotation_degrees, expand=True)
     composite_image = np.array(composite_image)
     em_image_obj = mims_imageviewset.canvas.images.first()
-    scale = mims_imageviewset.pixel_size_nm / (em_image_obj.pixel_size_nm or 5)
+    scale = mims_imageviewset.pixel_size_nm / em_image_obj.pixel_size_nm
     # Load the EM image as a numpy array
     em_image = Image.open(em_image_obj.file.path)
     em_image_array = np.array(em_image)
@@ -182,18 +255,22 @@ def calculate_individual_mims_translations(mims_imageviewset, isotope):
     # Calculate and store translations for each MIMS image
     for mims_image in mims_images:
         filename = mims_image.file.name.split("/")[-1].split(".")[0]
+        if "ROI_12" not in filename:
+            continue
         roi = filename.split("_")[-1]
         print(roi, "time1", time.time() - start)
+        im, bboxes = load_images_and_bboxes(mims_imageviewset, isotope)
+        positions = [bbox[0] for bbox in bboxes]
         # Load the MIMS image for the isotope and load as PIL image
-        img_orig = get_autocontrast_image_path(mims_image, isotope)
-        img_orig = Image.open(img_orig)
+        img_orig = image_from_im_file(mims_image.file.path, isotope, True)
+        img_orig = Image.fromarray(img_orig)
         if isotope == "32S":
             img_orig = ImageOps.invert(img_orig)
         img = img_orig.copy()
         # Apply the flip and rotation if necessary to it
-        img = img.rotate(-rotation_degrees, expand=True)
         if flip:
             img = img.transpose(Image.FLIP_LEFT_RIGHT)
+        img = img.rotate(-rotation_degrees, expand=True)
         img_array = np.array(img)
 
         # Calculate the center of the image
@@ -217,6 +294,14 @@ def calculate_individual_mims_translations(mims_imageviewset, isotope):
             composite_image, cropped_img_array, cv2.TM_CCOEFF_NORMED
         )
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
+        print(
+            "loc",
+            max_val,
+            scale,
+            mims_imageviewset.canvas_y,
+            mims_imageviewset.canvas_x,
+            max_loc,
+        )
         # Now from this approximation, find a closer match in the actual EM image
         # Find the original EM location of the MIMS image
         mims_y = mims_imageviewset.canvas_y + max_loc[1] * scale
@@ -231,11 +316,11 @@ def calculate_individual_mims_translations(mims_imageviewset, isotope):
             or approx_em_loc[1] < -mims_scaled_shape[1]
             or approx_em_loc[1] > em_orig_shape[1] + mims_scaled_shape[1]
         ):
-            print("Out of bounds: ", approx_em_loc, em_orig_shape)
+            print("Out of bounds: ", approx_em_loc, em_orig_shape, mims_scaled_shape)
             mims_image.status = "OUTSIDE_CANVAS"
             mims_image.save()
             continue
-        print("Seems in bounds:", approx_em_loc, em_orig_shape)
+        print("Seems in bounds:", approx_em_loc, em_orig_shape, mims_scaled_shape)
         # Then scale it down
         mims_y_scaled = mims_y / scale
         mims_x_scaled = mims_x / scale

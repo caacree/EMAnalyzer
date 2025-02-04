@@ -37,8 +37,7 @@ class MimsImageSetCanvasDetailSerializer(serializers.ModelSerializer):
             "flip",
             "rotation_degrees",
             "composite_images",
-            "canvas_x",
-            "canvas_y",
+            "canvas_bbox",
             "pixel_size_nm",
             "mims_images",
         ]

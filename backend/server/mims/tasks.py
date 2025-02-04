@@ -34,7 +34,7 @@ def preprocess_mims_image_set(mims_image_set_id):
     media_root = settings.MEDIA_ROOT
 
     for mims_image in mims_image_set.mims_images.all():
-        print(f"doing image {mims_image.file.name}")
+        print(f"Processing image {mims_image.file.name}")
         mims = sims.SIMS(mims_image.file.path)
         is_valid_file = (
             mims and (mims.data is not None) and (mims.data.species is not None)
@@ -58,7 +58,6 @@ def preprocess_mims_image_set(mims_image_set_id):
         if not os.path.exists(isotope_image_dir):
             os.makedirs(isotope_image_dir)
         for species in all_species:
-            print(f"doing isotope {species}")
             iso = Isotope.objects.get_or_create(name=species)
             mims_image.isotopes.add(iso[0])
             # Extract and save the isotope image as a png

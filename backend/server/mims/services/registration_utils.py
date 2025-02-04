@@ -104,7 +104,7 @@ def iou(mask1, mask2):
     return np.sum(intersection) / np.sum(union)
 
 
-def mask_to_polygon(mask, single_polygon=True):
+def mask_to_polygon(mask, single_polygon=True, translate=[0, 0]):
     # Ensure the mask is of type uint8, as required by OpenCV
     mask_uint8 = (mask * 255).astype(np.uint8)
 
@@ -115,6 +115,12 @@ def mask_to_polygon(mask, single_polygon=True):
     polygons = [contour.reshape(-1, 2) for contour in contours]
     # if single_polygon:
     #    polygons = polygons[0:1]
+
+    # translate the polygons
+    polygons = [
+        [[p[0] + translate[0], p[1] + translate[1]] for p in polygon]
+        for polygon in polygons
+    ]
 
     return polygons
 

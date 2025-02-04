@@ -1,25 +1,32 @@
 import { create } from 'zustand'
 
 interface Point {
+  id: string
   x: number
   y: number
+  color?: string
+  type?: string
 }
 
 interface Overlay {
   id: string
   visible: boolean
   data: any // You might want to make this more specific based on your needs
+  fill?: boolean
+  color?: string
 }
 
 interface CanvasViewerState {
   zoom: number
   flip: boolean
   rotation: number
+  coordinates: Point[]
   points: Point[]
   overlays: Overlay[]
   setZoom: (zoom: number) => void
   setFlip: (flip: boolean) => void
   setRotation: (rotation: number) => void
+  setCoordinates: (coordinates: Point[]) => void
   addPoint: (point: Point) => void
   removePoint: (index: number) => void
   clearPoints: () => void
@@ -33,12 +40,14 @@ export const useCanvasViewer = create<CanvasViewerState>((set) => ({
   zoom: 1,
   flip: false,
   rotation: 0,
+  coordinates: [],
   points: [],
   overlays: [],
   
   setZoom: (zoom) => set({ zoom }),
   setFlip: (flip) => set({ flip }),
   setRotation: (rotation) => set({ rotation }),
+  setCoordinates: (coordinates) => set({ coordinates }),
   
   addPoint: (point) => set((state) => ({ 
     points: [...state.points, point] 

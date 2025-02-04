@@ -6,27 +6,11 @@ import api from "@/api/api";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/shared/ui/tabs";
 import { useCanvasViewer } from "@/stores/canvasViewer";
 import { useMimsViewer } from "@/stores/mimsViewer";
-import { cn } from "@/lib/utils";
 import ControlledOpenSeaDragon from "@/components/shared/ControlledOpenSeaDragon";
-import { Slider } from "@/components/shared/ui/slider";
-import { Checkbox } from "../../components/shared/ui/checkbox";
-import { TrashIcon } from "lucide-react";
 import RegistrationPage from "./RegistrationPage";
+import OpenSeaDragonSegmenter from "@/components/shared/OpenSeaDragonSegmenter";
+import { usePrepareCanvasForGuiQuery } from "@/queries/queries";
 
-const updateAlignmentStatus = async (
-  mimsImageId: string, savedEmPos: any, rotation: number, flip: boolean
-) => {
-  const post = {
-    zoom: savedEmPos?.zoom, 
-    xOffset: savedEmPos?.xOffset, 
-    yOffset: savedEmPos?.yOffset, 
-    rotation, 
-    flip
-  };
-  return api.post(`mims_image/${mimsImageId}/set_alignment/`, post).then(() => {
-    history.back();
-  });
-}
 const fetchMimsImageDetail = async (id: string) => {
   const res = await api.get(`mims_image/${id}/`);
   return res.data;
@@ -35,65 +19,51 @@ const fetchMimsImageDetail = async (id: string) => {
 const MimsImage = () => {
   const canvasStore = useCanvasViewer();
   const mimsStore = useMimsViewer();
-  const { setZoom: setEmZoom, setCoordinates: setEmCoordinates } = canvasStore;
-  const { setZoom: setMimsZoom, setFlip: setMimsFlip, setRotation: setMimsRotation } = mimsStore;
+  const { setCoordinates: setEmCoordinates } = canvasStore;
+  const { setFlip: setMimsFlip, setRotation: setMimsRotation } = mimsStore;
   const [openseadragonOptions, setOpenseadragonOptions] = useState<any>({defaultZoomLevel: 1});
-  const [savedEmPos, setSavedEmPos] = useState<any | null>(null);
-  const [selectedAlignment, setSelectedAlignment] = useState<string>('');
   const [selectedIsotope, setSelectedIsotope] = useState("32S");
-  const [selectedEmPoints, setSelectedEmPoints] = useState<any | null>([]);
-  const [selectedMimsPoints, setSelectedMimsPoints] = useState<any | null>([]);
-  const [highlightedPointIndex, setHighlightedPointIndex] = useState<number | null>(null);
-
+  const [segmentEmShapes, setSegmentEmShapes] = useState<boolean>(true);
+  const [readyToSegment, setReadyToSegment] = useState<boolean | string>(false);
 
   const queryClient = useQueryClient();
   const navigate = useNavigate({ from: window.location.pathname });
   const { mimsImageId } = useParams({ strict: false });
-  const { data: mimsImage, isLoading } = useQuery({
+
+  const { data: mimsImage } = useQuery({
     queryKey: ['mims_image', mimsImageId], 
     queryFn: () => fetchMimsImageDetail(mimsImageId as string)
   });
+
+  usePrepareCanvasForGuiQuery(mimsImage?.image_set?.canvas.id);
   
-
-  const selectAlignment = (alignmentId: string) => {
-    setSelectedAlignment(alignmentId);
-
-    const alignment = mimsImage?.alignments?.find((al: any) => al.id == alignmentId)
-    if (alignment) {
-      const pixelSizeRatio = mimsImage.pixel_size_nm / 5;
-      const offset = 512 * pixelSizeRatio;
-      
-      setEmCoordinates([
-        { x: alignment?.x_offset, y: alignment?.y_offset },
-        { x: alignment?.x_offset + offset, y: alignment?.y_offset + offset }
-      ]);
-      setMimsRotation(alignment?.rotation_degrees);
-      setMimsFlip(alignment?.flip_hor);
-      setMimsZoom(1/alignment?.scale);
-      setSavedEmPos({
-        zoom: 1/alignment?.scale,
-        xOffset: alignment?.x_offset,
-        yOffset: alignment?.y_offset,
-      });
-    }
-  }
   useEffect(() => {
-    if (mimsImage?.alignments?.length) {
-      selectAlignment(mimsImage?.alignments[0].id);
+    if (mimsImage?.canvas_bbox?.length) {
+      const defaultZoomLevel = mimsImage?.pixel_size_nm / mimsImage?.image_set?.canvas.pixel_size_nm
+      if (openseadragonOptions.defaultZoomLevel !== defaultZoomLevel && mimsImage?.pixel_size_nm && defaultZoomLevel < 10000) {
+        setOpenseadragonOptions({defaultZoomLevel});
+      }
+      const min_x = Math.min(...mimsImage.canvas_bbox.map((p: any) => p[0]));
+      const min_y = Math.min(...mimsImage.canvas_bbox.map((p: any) => p[1]));
+      const max_x = Math.max(...mimsImage.canvas_bbox.map((p: any) => p[0]));
+      const max_y = Math.max(...mimsImage.canvas_bbox.map((p: any) => p[1]));
+      const em_bbox = [{x:min_x, y:min_y, id: "em_tl"}, {x:max_x, y:max_y, id: "em_br"}];
+      setEmCoordinates(em_bbox);
+      setMimsFlip(mimsImage?.image_set?.flip);
+      setMimsRotation(mimsImage?.image_set?.rotation_degrees);
+      setSelectedIsotope(mimsImage?.isotopes[0]?.name);
     }
-    const defaultZoomLevel = mimsImage?.pixel_size_nm / mimsImage?.image_set?.canvas.pixel_size_nm
-    if (openseadragonOptions.defaultZoomLevel !== defaultZoomLevel && mimsImage?.pixel_size_nm && defaultZoomLevel < 10000) {
-      setOpenseadragonOptions({defaultZoomLevel});
-    }
+    /*api.get(`mims_image/${mimsImageId}/prepare_for_segmentation/`).then(() => {
+      const intervalId = setInterval(async () => {
+        const response = await api.get(`mims_image/${mimsImageId}/is_segmentation_ready/`);
+        if (response.data === true) {
+          setReadyToSegment(true);
+          clearInterval(intervalId);
+        }
+      }, 2000);
+      return () => clearInterval(intervalId); // Cleanup on component unmount
+    });*/
   }, [mimsImage]);
-
-  if (isLoading) {
-    return <p>Loading...</p>;
-  }
-  const totalPoints = Math.max(selectedEmPoints.length, selectedMimsPoints.length);
-  const updateSelectedEmPoints = (pos: any) => {
-    setSelectedEmPoints((prevPoints: any[]) => [...prevPoints, pos]);
-  };
   
   const handleOutsideCanvas = () => {
     api.post(`mims_image/${mimsImageId}/outside_canvas/`).then(() => {
@@ -106,101 +76,91 @@ const MimsImage = () => {
       queryClient.invalidateQueries();
     })
   }
-  console.log(mimsImage);
+
+  const handleSubmit = () => {
+    const data = {
+      em_shapes: canvasStore.overlays.map((o: any) => o.data?.polygon).filter((p: any) => p),
+      mims_shapes: mimsStore.overlays.map((o: any) => o.data?.polygon).filter((p: any) => p)
+    };
+    api.post(`mims_image/${mimsImageId}/register/`, data).then(() => {
+      //queryClient.invalidateQueries();
+      //navigate({ to: `/canvas/${mimsImage?.image_set?.canvas.id}` });
+    })
+  }
+
+  const clearAll = () => {
+    canvasStore.clearPoints();
+    mimsStore.clearPoints();
+    canvasStore.clearOverlays();
+    mimsStore.clearOverlays();
+  }
   
   if (["AWAITING_REGISTRATION", "REGISTERING", "DEWARP PENDING"].indexOf(mimsImage?.status) !== -1 && mimsImage?.alignments?.length) {
     return <RegistrationPage />;
   }
+  if (!mimsImage) {
+    return <div>Loading...</div>;
+  }
   return (
-    <div className="flex flex-col w-full m-4">
+    <div className="flex flex-col w-full m-4 mb-5">
       <div className="flex gap-8">
-        <Link to={`/canvas/${mimsImage?.image_set?.canvas.id}`}>Back to EM Image</Link>
+        <Link onClick={clearAll} to={`/canvas/${mimsImage?.image_set?.canvas.id}`}>Back to EM Image</Link>
         <div>{mimsImage?.file?.split('/').pop()}</div>
       </div>
-      <div className="mt-2 flex gap-5 grow">
+      <div className="mt-2 mb-8 flex gap-5 grow">
         <div className="flex grow flex-col">
-          <div className="flex gap-4 items-center mb-2">Suggested Alignments: 
-            <Tabs defaultValue={selectedAlignment}>
-              <TabsList className="flex space-x-1">
-                {mimsImage?.alignments?.map((alignment: any, alignmentIndex: number) => (
-                  <TabsTrigger key={alignment.id} value={alignment.id} onClick={() => selectAlignment(alignment.id)}>
-                    {alignmentIndex}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-            <div><button onClick={handleReset}>Reset</button></div>
-            <button onClick={() => updateAlignmentStatus(
-                mimsImage?.id, savedEmPos, useCanvasViewer.getState().rotation, useCanvasViewer.getState().flip
-              )}
-            >Correct</button>
-
-          <div><button onClick={handleOutsideCanvas}>Outside Canvas</button></div>
+          <div className="flex gap-4 items-center mb-2">
+            <div><input type="checkbox" checked={segmentEmShapes} onChange={() => setSegmentEmShapes(!segmentEmShapes)} /> Segment EM Shapes</div>
+            <div><button onClick={handleSubmit}>Submit</button></div>
           </div>
-          <div>{mimsImage?.alignments?.find((al: any) => al.id == selectedAlignment)?.status}</div>
           <div className="flex flex-col">
             <div className="w-[600px] h-[600px]">
-              <ControlledOpenSeaDragon 
+              {segmentEmShapes ? (
+                <OpenSeaDragonSegmenter 
+                  iiifContent={`http://localhost:8000/${mimsImage?.em_dzi}`}
+                  canvasStore={canvasStore}
+                  isotope="em"
+                />
+              ) : (<ControlledOpenSeaDragon 
                 iiifContent={`http://localhost:8000/${mimsImage?.em_dzi}`}
                 canvasStore={canvasStore}
                 allowZoom={true}
                 allowFlip={true}
                 allowRotation={true}
-                allowSelection={false}
-              />
+                allowPointSelection={false}
+              />)}
+              
           </div>
           </div>
         </div>
-        <div className="flex grow">
-          <Tabs defaultValue={selectedIsotope}>
-            <TabsList className="flex space-x-1">
-              {mimsImage.isotopes?.map((isotope: any) => (
-                <TabsTrigger key={isotope.name} value={isotope.name} onClick={() => setSelectedIsotope(isotope.name)}>
-                  {isotope.name}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          {mimsImage.isotopes?.map((isotope: any) => {
-            const url = `http://localhost:8000/api/mims_image/${mimsImage.id}/image.png?species=${isotope.name}&autocontrast=true`
-            return (
-              <TabsContent key={isotope.name} value={isotope.name}>
-                <div className="flex items-center justify-between">
-                  <div className="flex gap-2 items-center">
-                    Flip: <Checkbox checked={useMimsViewer.getState().flip} onCheckedChange={setMimsFlip} />
-                  </div>
-                  <div className="flex gap-2 items-center">
-                    Rotation:<Slider value={[useMimsViewer.getState().rotation]} min={0} max={360} onValueChange={(v) => setMimsRotation(v?.[0])} />{useMimsViewer.getState().rotation}&deg;
-                  </div>
-                </div>
-                <ControlledOpenSeaDragon 
-                  url={url}
-                  canvasStore={mimsStore}
-                  allowZoom={true}
-                  allowFlip={true}
-                  allowRotation={true}
-                  allowSelection={false}
-                />
-              </TabsContent>
-          )})}
-          </Tabs>
-        </div>
-      </div>
-      <div className="flex flex-col">
-        <div>Selected points</div>
-        {[...Array(totalPoints).keys()].map((_, index) => (
-          <div key={index} className={cn("flex gap-4 items-center", index === highlightedPointIndex && "bg-gray-200")}>
-            <div onClick={() => setHighlightedPointIndex(index)} style={{ fontWeight: index === highlightedPointIndex ? 'bold' : 'normal' }}>
-              EM: {selectedEmPoints[index]?.x.toFixed(2)}, {selectedEmPoints[index]?.y.toFixed(2)}
-            </div>
-            <div onClick={() => setHighlightedPointIndex(index)} style={{ fontWeight: index === highlightedPointIndex ? 'bold' : 'normal' }}>
-              MIMS: {selectedMimsPoints[index]?.x.toFixed(2)}, {selectedMimsPoints[index]?.y.toFixed(2)}
-            </div>
-            <TrashIcon onClick={() => {
-              setSelectedEmPoints((prev: any) => prev.filter((_: any, i: any) => i !== index));
-              setSelectedMimsPoints((prev: any) => prev.filter((_: any, i: any) => i !== index));
-            }} className="cursor-pointer" />
+        <div className="flex flex-col grow">
+          <div className="flex gap-4 items-center mb-2">
+            <div><button onClick={handleReset}>Reset</button></div>
+            <div><button onClick={handleOutsideCanvas}>Outside Canvas</button></div>
           </div>
-        ))}
+          <div className="flex grow">
+            <Tabs value={selectedIsotope}>
+              <TabsList className="flex space-x-1">
+                {mimsImage?.isotopes?.map((isotope: any) => (
+                  <TabsTrigger key={isotope.name} value={isotope.name} onClick={() => setSelectedIsotope(isotope.name)}>
+                    {isotope.name}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            {mimsImage?.isotopes?.map((isotope: any) => {
+              const url = `http://localhost:8000/api/mims_image/${mimsImage.id}/image.png?species=${isotope.name}&autocontrast=true`
+              return (
+                <TabsContent key={isotope.name} value={isotope.name}>
+                  <OpenSeaDragonSegmenter 
+                    url={url}
+                    canvasStore={mimsStore}
+                    isotope={isotope.name}
+                  />
+                </TabsContent>
+            )})}
+            </Tabs>
+        </div>
+        </div>
       </div>
     </div>
   );
