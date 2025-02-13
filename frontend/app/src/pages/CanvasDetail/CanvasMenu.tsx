@@ -1,7 +1,8 @@
 import React from "react";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useParams, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/api/api";
+import MIMSImageSet from "../MimsImageSetDetail/MimsImageSetListItem";
 
 const fetchCanvasDetail = async (id: string) => {
   const res = await api.get(`canvas/${id}/`);
@@ -15,23 +16,36 @@ const CanvasMenu = () => {
   });
   
   return (
-    <div className="w-64 bg-gray-900 h-screen p-4 text-white ">
-      <nav className="space-y-2">
-        <div className="flex gap-20">
-          <h2 className="flex gap-20">Canvas: {canvas.name}</h2>
+    <div className="w-64 bg-gray-900 h-screen p-4 text-white">
+      <nav className="space-y-4">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold">Canvas: {canvas?.name}</h2>
         </div>
-        <Link 
-          to={`/canvas/${canvasId}`}
-          className="block px-4 py-2 text-white hover:bg-gray-800 rounded"
-        >
-          Segmentations
-        </Link>
-        <Link 
-          to={`/canvas/${canvasId}`}
-          className="block px-4 py-2 text-white hover:bg-gray-800 rounded"
-        >
-          Correlative
-        </Link>
+        
+        <div className="space-y-2">
+          <h3 className="text-sm uppercase tracking-wider text-gray-400">Navigation</h3>
+          <Link 
+            to={`/canvas/${canvasId}`}
+            className="block px-4 py-2 text-white hover:bg-gray-800 rounded"
+          >
+            Segmentations
+          </Link>
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="text-sm uppercase tracking-wider text-gray-400">Correlative</h3>
+          <div className="pl-2 space-y-2">
+            {canvas?.mims_sets?.map((mimsImageSet: any) => (
+              <MIMSImageSet 
+                key={mimsImageSet.id} 
+                mimsImageSet={mimsImageSet}
+                onSelect={(newId: string) => {
+                  window.location.href = `/canvas/${canvasId}?mimsImageSet=${newId}`;
+                }}
+              />
+            ))}
+          </div>
+        </div>
       </nav>
     </div>
   );
