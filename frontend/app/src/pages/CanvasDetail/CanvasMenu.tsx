@@ -5,17 +5,17 @@ const CanvasMenu = () => {
   const { canvasId } = useParams({ strict: false});
   
   return (
-    <div className="w-64 bg-gray-100 h-screen p-4">
+    <div className="w-64 bg-gray-900 h-screen p-4">
       <nav className="space-y-2">
         <Link 
           to={`/canvas/${canvasId}`}
-          className="block px-4 py-2 text-gray-700 hover:bg-gray-200 rounded"
+          className="block px-4 py-2 text-white hover:bg-gray-800 rounded"
         >
           Segmentations
         </Link>
         <Link 
           to={`/canvas/${canvasId}`}
-          className="block px-4 py-2 text-gray-700 hover:bg-gray-200 rounded"
+          className="block px-4 py-2 text-white hover:bg-gray-800 rounded"
         >
           Correlative
         </Link>
