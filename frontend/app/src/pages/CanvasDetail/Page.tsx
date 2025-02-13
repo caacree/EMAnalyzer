@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Link, useParams } from "@tanstack/react-router";
+import { useParams } from "@tanstack/react-router";
 import React from "react";
+import CanvasMenu from "./CanvasMenu";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/api/api";
 import ControlledOpenSeaDragon from '@/components/shared/ControlledOpenSeaDragon';
@@ -26,7 +27,9 @@ const CanvasDetail = () => {
   }
 
   return (
-    <div className="w-full flex flex-col ml-10 gap-5">
+    <div className="flex">
+      <CanvasMenu />
+      <div className="flex-1 flex flex-col gap-5 p-5">
       <div className="flex gap-20">
         <h2 className="flex gap-20">Canvas: {canvas.name}</h2>
       </div>
@@ -38,6 +41,7 @@ const CanvasDetail = () => {
           allowFlip={false}
           allowRotation={false}
         />
+      </div>
       </div>
     </div>
   );
