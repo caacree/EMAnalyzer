@@ -39,7 +39,7 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
       className="flex items-center justify-between px-2 py-1 hover:bg-gray-800 rounded cursor-pointer"
       onClick={() => onSelect(mimsImageSet.id)}
     >
-      <span>{mimsImageSet.name || mimsImageSet.id}</span>
+      <span className="truncate max-w-[160px]">{mimsImageSet.name || mimsImageSet.id}</span>
       <button 
         onClick={(e) => {
           e.stopPropagation();
