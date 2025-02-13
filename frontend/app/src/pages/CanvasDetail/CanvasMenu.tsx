@@ -2,7 +2,7 @@ import React from "react";
 import { Link, useParams } from "@tanstack/react-router";
 
 const CanvasMenu = () => {
-  const { canvasId } = useParams();
+  const { canvasId } = useParams({ strict: false});
   
   return (
     <div className="w-64 bg-gray-100 h-screen p-4">
