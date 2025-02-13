@@ -7,15 +7,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCanvasViewer } from "@/stores/canvasViewer";
 
 
-const STATUS_PRIORITY_MAP: { [key: string]: number } = {
-  "NEED_USER_ALIGNMENT": -2,
-  "USER_ROUGH_ALIGNMENT": 2,
-  "REGISTERING": 5,
-  "NO_CELLS": 6,
-  "DEWARP PENDING": 3,
-  "AWAITING_REGISTRATION": -1,
-  "OUTSIDE_CANVAS": 9
-}
 const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect: any }) => {
   const queryClient = useQueryClient();
   const handleDeleteMimsSet = (imageSetId: string) => {
@@ -44,37 +35,23 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
   };
 
   return (
-    <div className="flex flex-col">
-      <div className="flex gap-1 items-center">
-        <div className="flex gap-1 items-center" onClick={() => onSelect(mimsImageSet.id)}><div>{mimsImageSet.name || mimsImageSet.id}</div>
-          <div>{mimsImageSet?.status}</div>
-          <div>{mimsImageSet.mims_images?.length | 0} images</div>
-        </div>
-        <div className="flex gap-1 items-center">
-          <button onClick={() => handleDeleteMimsSet(mimsImageSet.id)}>
-          <TrashIcon />
-        </button></div>
-      </div>
-      {mimsImageSet?.status !== 'ALIGNED' ? (mimsImageSet.mims_images?.sort((a: any, b: any) => {
-        const a_priority = STATUS_PRIORITY_MAP[a.status as string];
-        const b_priority = STATUS_PRIORITY_MAP[b.status as string];
-        return (a_priority <= b_priority ? -1 : 1); 
-      }).map((mimsImage: any) => (
-        <div key={mimsImage.id} className="flex items-center gap-2" onMouseEnter={() => updateHoverImg(mimsImage.id)} onMouseLeave={() => updateHoverImg(null)}>
-          <Link to={`/mims_image/${mimsImage.id}`} disabled={mimsImage.status === "OUTSIDE_CANVAS"}>
-            {extractFileName(mimsImage.file)}
-          </Link>
-          <button>{mimsImage.status}</button>
-        </div>
-      ))) : null}
+    <div 
+      className="flex items-center justify-between px-2 py-1 hover:bg-gray-800 rounded cursor-pointer"
+      onClick={() => onSelect(mimsImageSet.id)}
+    >
+      <span>{mimsImageSet.name || mimsImageSet.id}</span>
+      <button 
+        onClick={(e) => {
+          e.stopPropagation();
+          handleDeleteMimsSet(mimsImageSet.id);
+        }}
+        className="opacity-50 hover:opacity-100"
+      >
+        <TrashIcon size={16} />
+      </button>
     </div>
   );
 };
 
-const extractFileName = (url: string) => {
-  const parts = url.split('/');
-  const fileName = parts[parts.length - 1];
-  return fileName.split('.')[0]; // remove extension
-};
 
 export default MIMSImageSet;
