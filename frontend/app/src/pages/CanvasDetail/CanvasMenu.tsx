@@ -1,15 +1,19 @@
-import React from "react";
-import { Link, useParams, useNavigate } from "@tanstack/react-router";
+import React, { useState } from "react";
+import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/api/api";
 import MIMSImageSetMenuItem from "./MimsImageSetListMenuItem";
+import MimsImageSetUploadModal from "@/components/shared/MimsImageSetUploadModal";
+import { PlusCircle } from "lucide-react";
 
 const fetchCanvasDetail = async (id: string) => {
   const res = await api.get(`canvas/${id}/`);
   return res.data;
 };
+
 const CanvasMenu = () => {
   const { canvasId } = useParams({ strict: false});
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const { data: canvas } = useQuery({
     queryKey: ['canvas', canvasId as string],
     queryFn: () => fetchCanvasDetail(canvasId as string),
@@ -29,6 +33,13 @@ const CanvasMenu = () => {
         <div className="space-y-2">
           <h3 className="text-sm uppercase tracking-wider text-gray-400">Correlative</h3>
           <div className="pl-2 space-y-2">
+            <button 
+              onClick={() => setIsUploadModalOpen(true)}
+              className="flex items-center text-blue-400 hover:text-blue-300 text-sm"
+            >
+              <PlusCircle size={16} className="mr-1" />
+              Add MIMS Image Set
+            </button>
             {canvas?.mims_sets?.map((mimsImageSet: any) => (
               <MIMSImageSetMenuItem
                 key={mimsImageSet.id} 
@@ -41,6 +52,12 @@ const CanvasMenu = () => {
           </div>
         </div>
       </nav>
+      
+      <MimsImageSetUploadModal 
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        canvasId={canvasId as string}
+      />
     </div>
   );
 };

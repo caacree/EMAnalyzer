@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Link,  useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import React, { useEffect,  useState } from "react";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import React, { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/api";
+import MimsImageSetUploadModal from "@/components/shared/MimsImageSetUploadModal";
 import ControlledOpenSeaDragon from '@/components/shared/ControlledOpenSeaDragon';
 import { useCanvasViewer } from "@/stores/canvasViewer";
 import { useMimsViewer } from "@/stores/mimsViewer";
@@ -37,7 +38,6 @@ const MimsImageSetDetail = () => {
   const mimsStore = useMimsViewer();
   const {setFlip: setMimsFlip, setRotation: setMimsRotation} = mimsStore;
   const [isSelectingPoints, setIsSelectingPoints] = useState(false);
-  const [files, setFiles] = useState<File[]>([]);
   const points = {em: canvasStore.points, mims: mimsStore.points};
 
   const image = canvas?.images?.[0];
@@ -56,33 +56,7 @@ const MimsImageSetDetail = () => {
     }
   }, [canvas, mimsImageSetId]);
     
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files) {
-      setFiles(Array.from(event.target.files));
-    }
-  };
-
-  const handleSubmit = async () => {
-    const formData = new FormData();
-    
-    // Add the EM image ID to the form data
-    formData.append('canvas', canvas.id);
-  
-    // Add files to the form data
-    files.forEach((file, index) => {
-      formData.append(`file_${index}`, file);
-    });
-  
-    try {
-      await api.post('/mims_image_set/', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      }).then(() => queryClient.invalidateQueries());
-    } catch (error) {
-      alert('Failed to upload files');
-    }
-  };
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   
 
   if (isLoading) {
@@ -164,20 +138,17 @@ const MimsImageSetDetail = () => {
                   )})}
                 </Tabs>
             ) : null}
-            <label htmlFor="file-input">Add new MIMS image set:</label>
-            <input
-              type="file"
-              id="file-input"
-              multiple
-              onChange={handleFileChange}
-              className="mb-2"
-            />
             <button
-              onClick={handleSubmit}
-              className="bg-blue-500 text-white px-4 py-2 rounded"
+              onClick={() => setIsUploadModalOpen(true)}
+              className="bg-blue-500 text-white px-4 py-2 rounded flex items-center justify-center"
             >
-              Submit
+              Add New MIMS Image Set
             </button>
+            <MimsImageSetUploadModal 
+              isOpen={isUploadModalOpen}
+              onClose={() => setIsUploadModalOpen(false)}
+              canvasId={canvas.id}
+            />
           </div>
         </div>
       </div>
