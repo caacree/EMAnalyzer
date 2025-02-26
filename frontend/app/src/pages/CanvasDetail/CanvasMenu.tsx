@@ -35,7 +35,7 @@ const CanvasMenu = () => {
           <div className="pl-2 space-y-2">
             <button 
               onClick={() => setIsUploadModalOpen(true)}
-              className="flex items-center text-blue-400 hover:text-blue-300 text-sm"
+              className="flex items-center text-sm text-gray-900"
             >
               <PlusCircle size={16} className="mr-1" />
               Add MIMS Image Set
