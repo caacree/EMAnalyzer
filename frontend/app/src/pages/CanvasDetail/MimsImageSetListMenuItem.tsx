@@ -36,14 +36,14 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
   };
 
   return (
-    <Tooltip.Provider>
+    <Tooltip.Provider delayDuration={100}>
       <div 
         className="flex items-center justify-between px-2 py-1 hover:bg-gray-800 rounded cursor-pointer"
         onClick={() => onSelect(mimsImageSet.id)}
       >
         <Tooltip.Root>
           <Tooltip.Trigger asChild>
-            <span className="truncate max-w-[160px]">{mimsImageSet.name || mimsImageSet.id}</span>
+            <span className="truncate">{mimsImageSet.name || mimsImageSet.id}</span>
           </Tooltip.Trigger>
           <Tooltip.Portal>
             <Tooltip.Content
@@ -55,15 +55,6 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
             </Tooltip.Content>
           </Tooltip.Portal>
         </Tooltip.Root>
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            handleDeleteMimsSet(mimsImageSet.id);
-          }}
-          className="opacity-50 hover:opacity-100"
-        >
-          <TrashIcon size={16} />
-        </button>
       </div>
     </Tooltip.Provider>
   );

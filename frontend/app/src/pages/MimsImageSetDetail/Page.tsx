@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import React, { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import api from "@/api/api";
 import MimsImageSetUploadModal from "@/components/shared/MimsImageSetUploadModal";
 import ControlledOpenSeaDragon from '@/components/shared/ControlledOpenSeaDragon';
@@ -24,8 +24,6 @@ const fetchCanvasDetail = async (id: string) => {
 
 const MimsImageSetDetail = () => {
   const params = useParams({ strict: false });
-  const searchParams = useSearch({ strict: false });
-  const queryClient = useQueryClient();
   const { canvasId, mimsImageSetId } = params;
   const mimsImageSet  = mimsImageSetId as string;
   const [selectedIsotope, setSelectedIsotope] = useState("32S");

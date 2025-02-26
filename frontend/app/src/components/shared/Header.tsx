@@ -5,7 +5,7 @@ import React from "react";
 const Header = () => {
   return (
     <header className="bg-white shadow">
-      <div className="mx-auto py-2 px-4 mb-2">
+      <div className="mx-auto py-2 px-4">
         <Link to="/" className="text-xl font-bold text-gray-900">ImgQuant</Link>
       </div>
     </header>

@@ -389,13 +389,11 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
   }, [coordinates]);
 
   return (
-    <div className="flex flex-col border">
       <div 
         ref={viewerRef} 
+        className="flex grow border"
         id={`controlled-openseadragon-${iiifContent || url}`} 
-        style={{ width: "600px", maxWidth: '600px', height: '600px', maxHeight: "600px" }} 
       />
-    </div>
   );
 };
 

@@ -12,9 +12,10 @@
 
 import { Route as rootRoute } from './routes/__root'
 import { Route as IndexImport } from './routes/index'
+import { Route as MimsimageMimsImageSetIdImport } from './routes/mims_image/$mimsImageSetId'
 import { Route as MimsimageMimsImageIdImport } from './routes/mims_image/$mimsImageId'
-import { Route as EmimageEmImageIdImport } from './routes/em_image/$emImageId'
-import { Route as CanvasCanvasIdImport } from './routes/canvas/$canvasId'
+import { Route as CanvasCanvasIdIndexImport } from './routes/canvas/$canvasId/index'
+import { Route as CanvasCanvasIdMimsImageSetMimsImageSetIdImport } from './routes/canvas/$canvasId/mimsImageSet/$mimsImageSetId'
 
 // Create/Update Routes
 
@@ -23,20 +24,26 @@ const IndexRoute = IndexImport.update({
   getParentRoute: () => rootRoute,
 } as any)
 
+const MimsimageMimsImageSetIdRoute = MimsimageMimsImageSetIdImport.update({
+  path: '/mims_image/$mimsImageSetId',
+  getParentRoute: () => rootRoute,
+} as any)
+
 const MimsimageMimsImageIdRoute = MimsimageMimsImageIdImport.update({
   path: '/mims_image/$mimsImageId',
   getParentRoute: () => rootRoute,
 } as any)
 
-const EmimageEmImageIdRoute = EmimageEmImageIdImport.update({
-  path: '/em_image/$emImageId',
+const CanvasCanvasIdIndexRoute = CanvasCanvasIdIndexImport.update({
+  path: '/canvas/$canvasId/',
   getParentRoute: () => rootRoute,
 } as any)
 
-const CanvasCanvasIdRoute = CanvasCanvasIdImport.update({
-  path: '/canvas/$canvasId',
-  getParentRoute: () => rootRoute,
-} as any)
+const CanvasCanvasIdMimsImageSetMimsImageSetIdRoute =
+  CanvasCanvasIdMimsImageSetMimsImageSetIdImport.update({
+    path: '/canvas/$canvasId/mimsImageSet/$mimsImageSetId',
+    getParentRoute: () => rootRoute,
+  } as any)
 
 // Populate the FileRoutesByPath interface
 
@@ -49,25 +56,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexImport
       parentRoute: typeof rootRoute
     }
-    '/canvas/$canvasId': {
-      id: '/canvas/$canvasId'
-      path: '/canvas/$canvasId'
-      fullPath: '/canvas/$canvasId'
-      preLoaderRoute: typeof CanvasCanvasIdImport
-      parentRoute: typeof rootRoute
-    }
-    '/em_image/$emImageId': {
-      id: '/em_image/$emImageId'
-      path: '/em_image/$emImageId'
-      fullPath: '/em_image/$emImageId'
-      preLoaderRoute: typeof EmimageEmImageIdImport
-      parentRoute: typeof rootRoute
-    }
     '/mims_image/$mimsImageId': {
       id: '/mims_image/$mimsImageId'
       path: '/mims_image/$mimsImageId'
       fullPath: '/mims_image/$mimsImageId'
       preLoaderRoute: typeof MimsimageMimsImageIdImport
+      parentRoute: typeof rootRoute
+    }
+    '/mims_image/$mimsImageSetId': {
+      id: '/mims_image/$mimsImageSetId'
+      path: '/mims_image/$mimsImageSetId'
+      fullPath: '/mims_image/$mimsImageSetId'
+      preLoaderRoute: typeof MimsimageMimsImageSetIdImport
+      parentRoute: typeof rootRoute
+    }
+    '/canvas/$canvasId/': {
+      id: '/canvas/$canvasId/'
+      path: '/canvas/$canvasId'
+      fullPath: '/canvas/$canvasId'
+      preLoaderRoute: typeof CanvasCanvasIdIndexImport
+      parentRoute: typeof rootRoute
+    }
+    '/canvas/$canvasId/mimsImageSet/$mimsImageSetId': {
+      id: '/canvas/$canvasId/mimsImageSet/$mimsImageSetId'
+      path: '/canvas/$canvasId/mimsImageSet/$mimsImageSetId'
+      fullPath: '/canvas/$canvasId/mimsImageSet/$mimsImageSetId'
+      preLoaderRoute: typeof CanvasCanvasIdMimsImageSetMimsImageSetIdImport
       parentRoute: typeof rootRoute
     }
   }
@@ -77,9 +91,10 @@ declare module '@tanstack/react-router' {
 
 export const routeTree = rootRoute.addChildren({
   IndexRoute,
-  CanvasCanvasIdRoute,
-  EmimageEmImageIdRoute,
   MimsimageMimsImageIdRoute,
+  MimsimageMimsImageSetIdRoute,
+  CanvasCanvasIdIndexRoute,
+  CanvasCanvasIdMimsImageSetMimsImageSetIdRoute,
 })
 
 /* prettier-ignore-end */
@@ -91,22 +106,26 @@ export const routeTree = rootRoute.addChildren({
       "filePath": "__root.tsx",
       "children": [
         "/",
-        "/canvas/$canvasId",
-        "/em_image/$emImageId",
-        "/mims_image/$mimsImageId"
+        "/mims_image/$mimsImageId",
+        "/mims_image/$mimsImageSetId",
+        "/canvas/$canvasId/",
+        "/canvas/$canvasId/mimsImageSet/$mimsImageSetId"
       ]
     },
     "/": {
       "filePath": "index.tsx"
     },
-    "/canvas/$canvasId": {
-      "filePath": "canvas/$canvasId.tsx"
-    },
-    "/em_image/$emImageId": {
-      "filePath": "em_image/$emImageId.tsx"
-    },
     "/mims_image/$mimsImageId": {
       "filePath": "mims_image/$mimsImageId.tsx"
+    },
+    "/mims_image/$mimsImageSetId": {
+      "filePath": "mims_image/$mimsImageSetId.tsx"
+    },
+    "/canvas/$canvasId/": {
+      "filePath": "canvas/$canvasId/index.tsx"
+    },
+    "/canvas/$canvasId/mimsImageSet/$mimsImageSetId": {
+      "filePath": "canvas/$canvasId/mimsImageSet/$mimsImageSetId.tsx"
     }
   }
 }

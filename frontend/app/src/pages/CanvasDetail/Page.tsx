@@ -27,13 +27,9 @@ const CanvasDetail = () => {
   }
 
   return (
-    <div className="flex">
+    <div className="flex grow">
       <CanvasMenu />
-      <div className="flex-1 flex flex-col gap-5 p-5">
-      <div className="flex gap-20">
-        <h2 className="flex gap-20">Canvas: {canvas.name}</h2>
-      </div>
-      <div className="flex w-full">
+      <div className="flex-1 flex flex-col gap-5 p-5 grow">
         <ControlledOpenSeaDragon 
           iiifContent={image.dzi_file} 
           canvasStore={canvasStore}
@@ -41,7 +37,6 @@ const CanvasDetail = () => {
           allowFlip={false}
           allowRotation={false}
         />
-      </div>
       </div>
     </div>
   );
