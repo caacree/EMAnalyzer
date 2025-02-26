@@ -46,23 +46,13 @@ const CanvasMenu = () => {
               Add MIMS Image Set
             </button>
             {canvas?.mims_sets?.map((mimsImageSet: any) => (
-              <div key={mimsImageSet.id} className="flex items-center justify-between">
                 <MIMSImageSetMenuItem
+                  key={mimsImageSet.id}
                   mimsImageSet={mimsImageSet}
                   onSelect={(newId: string) => {
                     window.location.href = `/canvas/${canvasId}/mimsImageSet/${newId}`;
                   }}
                 />
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteMimsSet(mimsImageSet.id);
-                  }}
-                  className="text-gray-400 hover:text-red-500"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
             ))}
           </div>
         </div>

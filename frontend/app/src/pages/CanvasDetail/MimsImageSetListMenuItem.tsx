@@ -36,14 +36,18 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
   };
 
   return (
-    <Tooltip.Provider delayDuration={100}>
+      <div className="flex flex-col gap-2">
       <div 
         className="flex items-center justify-between px-2 py-1 hover:bg-gray-800 rounded cursor-pointer"
         onClick={() => onSelect(mimsImageSet.id)}
       >
+      <Tooltip.Provider delayDuration={100}>
         <Tooltip.Root>
           <Tooltip.Trigger asChild>
-            <span className="truncate">{mimsImageSet.name || mimsImageSet.id}</span>
+            <div className="flex items-center gap-2 truncate">
+              <span className="truncate">{mimsImageSet.name || mimsImageSet.id}</span>
+              <TrashIcon onClick={() => handleDeleteMimsSet(mimsImageSet.id)} className="cursor-pointer" />
+            </div>
           </Tooltip.Trigger>
           <Tooltip.Portal>
             <Tooltip.Content
@@ -55,10 +59,35 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
             </Tooltip.Content>
           </Tooltip.Portal>
         </Tooltip.Root>
-      </div>
-    </Tooltip.Provider>
+        </Tooltip.Provider>
+        
+      </div>{mimsImageSet?.status !== 'ALIGNED' ? (mimsImageSet.mims_images?.sort((a: any, b: any) => {
+          const a_priority = STATUS_PRIORITY_MAP[a.status as string];
+          const b_priority = STATUS_PRIORITY_MAP[b.status as string];
+          return (a_priority <= b_priority ? -1 : 1); 
+        }).map((mimsImage: any) => (
+          <div key={mimsImage.id} className="flex items-center gap-2" onMouseEnter={() => updateHoverImg(mimsImage.id)} onMouseLeave={() => updateHoverImg(null)}>
+            <Link to={`/mims_image/${mimsImage.id}`} disabled={mimsImage.status === "OUTSIDE_CANVAS"}>
+              {extractFileName(mimsImage.file)}
+            </Link>
+            <button>{mimsImage.status}</button>
+          </div>
+        ))) : null}</div>
   );
 };
 
-
+const extractFileName = (url: string) => {
+  const parts = url.split('/');
+  const fileName = parts[parts.length - 1];
+  return fileName.split('.')[0]; // remove extension
+};
+const STATUS_PRIORITY_MAP: { [key: string]: number } = {
+  "NEED_USER_ALIGNMENT": -2,
+  "USER_ROUGH_ALIGNMENT": 2,
+  "REGISTERING": 5,
+  "NO_CELLS": 6,
+  "DEWARP PENDING": 3,
+  "AWAITING_REGISTRATION": -1,
+  "OUTSIDE_CANVAS": 9
+}
 export default MIMSImageSet;

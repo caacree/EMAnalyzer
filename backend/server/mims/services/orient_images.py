@@ -141,7 +141,9 @@ def orient_viewset(mims_imageviewset, points, isotope):
     transformed_bbox = transform(bbox)
 
     mims_imageviewset.flip = flip
-    mims_imageviewset.rotation_degrees = rotation_degrees
+    mims_imageviewset.rotation_degrees = (
+        rotation_degrees if flip else 360 - rotation_degrees
+    )
     mims_imageviewset.canvas_bbox = transformed_bbox.tolist()
     mims_imageviewset.pixel_size_nm = (
         mims_imageviewset.canvas.pixel_size_nm or 5
