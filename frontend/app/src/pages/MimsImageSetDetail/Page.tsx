@@ -6,7 +6,7 @@ import api from "@/api/api";
 import ControlledOpenSeaDragon from '@/components/shared/ControlledOpenSeaDragon';
 import { useCanvasViewer } from "@/stores/canvasViewer";
 import { useMimsViewer } from "@/stores/mimsViewer";
-import MIMSImageSet from "./MimsImageSetListItem";
+import MIMSImageSet from "../CanvasDetail/MimsImageSetListMenuItem";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/shared/ui/tabs";
 import { Checkbox } from "@/components/shared/ui/checkbox";
 import { Slider } from "@/components/shared/ui/slider";
@@ -14,6 +14,7 @@ import { XCircleIcon } from "lucide-react";
 import { postImageSetPoints } from "@/api/api";
 import { cn } from "@/lib/utils";
 import { usePrepareCanvasForGuiQuery } from "@/queries/queries";
+import CanvasMenu from "../CanvasDetail/CanvasMenu";
 
 const fetchCanvasDetail = async (id: string) => {
   const res = await api.get(`canvas/${id}/`);
@@ -24,8 +25,8 @@ const MimsImageSetDetail = () => {
   const params = useParams({ strict: false });
   const searchParams = useSearch({ strict: false });
   const queryClient = useQueryClient();
-  const { canvasId } = params;
-  const { mimsImageSet } = searchParams as any;
+  const { canvasId, mimsImageSetId } = params;
+  const mimsImageSet  = mimsImageSetId as string;
   const [selectedIsotope, setSelectedIsotope] = useState("32S");
   const { data: canvas, isLoading } = useQuery({
     queryKey: ['canvas', canvasId as string],
@@ -43,8 +44,8 @@ const MimsImageSetDetail = () => {
   usePrepareCanvasForGuiQuery(canvasId as string);
 
   useEffect(() => {
-    if (image && mimsImageSet) {
-      const selectedMimsSet = canvas?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSet);
+    if (image && mimsImageSetId) {
+      const selectedMimsSet = canvas?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSetId);
       if (!selectedMimsSet) {
         return;
       }
@@ -53,7 +54,7 @@ const MimsImageSetDetail = () => {
       setMimsRotation(degrees);
       setSelectedIsotope(Object.keys(selectedMimsSet?.composite_images)[0]);
     }
-  }, [canvas, mimsImageSet]);
+  }, [canvas, mimsImageSetId]);
     
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
@@ -97,15 +98,11 @@ const MimsImageSetDetail = () => {
 
   const selectedMimsSet = canvas?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSet);
   return (
-    <div className="w-full flex flex-col ml-10 gap-5 max-h-[80%]">
-      <div className="flex gap-20">
-        <Link to={`/canvas/${canvas.id}`}>
-          <h2 className="flex gap-20">Canvas: {canvas.name}</h2>
-        </Link>
-        <div>{selectedMimsSet ? `Selected Mims Image Set: ${selectedMimsSet.id}` : null}</div>
-      </div>
-      <div className="flex w-full">
-        <div className="flex w-1/2">
+    <div className="flex">
+      <CanvasMenu />
+    <div className="flex flex-col px-10 gap-5 w-full grow">
+      <div className="flex w-full grow">
+        <div className="flex w-1/2 max-w-1/2 min-h-[400px] grow">
           <ControlledOpenSeaDragon 
             iiifContent={image.dzi_file} 
             canvasStore={canvasStore}
@@ -115,8 +112,8 @@ const MimsImageSetDetail = () => {
             allowPointSelection={isSelectingPoints}
           />
         </div>
-        <div className="flex w-1/2">
-          <div className={cn("flex flex-col gap-3", !mimsImageSet && "max-h-[600px] overflow-scroll")}>
+        <div className="flex w-1/2 max-w-1/2">
+          <div className={cn("flex flex-col grow gap-3 max-w-full overflow-hidden min-h-[400px]")}>
             {!mimsImageSet ? (
               <>
                 <div>MIMS Image sets</div>
@@ -128,8 +125,7 @@ const MimsImageSetDetail = () => {
               </>
             ) : null}
             {selectedMimsSet?.composite_images ? (
-              <div className="">
-                <Tabs defaultValue={selectedIsotope}>
+                <Tabs defaultValue={selectedIsotope} className="flex flex-col grow">
                   <TabsList className="flex space-x-1">
                     {Object.keys(selectedMimsSet.composite_images).map((isotope: any) => (
                       <TabsTrigger key={isotope} value={isotope} onClick={() => setSelectedIsotope(isotope)}>
@@ -138,8 +134,9 @@ const MimsImageSetDetail = () => {
                     ))}
                   </TabsList>
                   {Object.keys(selectedMimsSet.composite_images).map((isotope: any) => {
+                    const isActive = selectedIsotope === isotope;
                     return (
-                    <TabsContent key={isotope} value={isotope}>
+                    <TabsContent key={isotope} value={isotope} className={cn("flex flex-col", isActive ? "grow" : "hidden")}>
                       <div className="flex items-center justify-between">
                         <div className="flex gap-2 items-center">
                           Flip: <Checkbox checked={mimsStore.flip} onCheckedChange={setMimsFlip} />
@@ -153,18 +150,19 @@ const MimsImageSetDetail = () => {
                           />{mimsStore.rotation}&deg;
                         </div>
                       </div>
-                      <ControlledOpenSeaDragon 
+                      <div className="flex grow">
+                        <ControlledOpenSeaDragon 
                         iiifContent={"http://localhost:8000" + selectedMimsSet.composite_images[isotope]+"/info.json"}
                         canvasStore={mimsStore}
-                        allowZoom={true}
-                        allowFlip={true}
-                        allowRotation={true}
-                        allowPointSelection={isSelectingPoints}
-                      />
+                          allowZoom={true}
+                          allowFlip={true}
+                          allowRotation={true}
+                          allowPointSelection={isSelectingPoints}
+                        />
+                      </div>
                     </TabsContent>
                   )})}
                 </Tabs>
-              </div>
             ) : null}
             <label htmlFor="file-input">Add new MIMS image set:</label>
             <input
@@ -213,6 +211,7 @@ const MimsImageSetDetail = () => {
           ) : null}
         </div>
         ) : null}
+    </div>
     </div>
   );
 };
