@@ -242,6 +242,32 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
       });
     }
 
+    // Add pan handler to update coordinates when panning
+    viewer.addHandler('pan', () => {
+      const viewport = viewer.viewport;
+      if (!viewport) return;
+      const tiledImage = viewer.world.getItemAt(0);
+      if (!tiledImage) return;
+      
+      // Get the current viewport bounds
+      const bounds = viewport.getBounds();
+      
+      // Convert viewport coordinates to image coordinates
+      const topLeft = tiledImage.viewportToImageCoordinates(bounds.x, bounds.y);
+      const bottomRight = tiledImage.viewportToImageCoordinates(
+        bounds.x + bounds.width,
+        bounds.y + bounds.height
+      );
+      
+      // Update coordinates in the store
+      if (setCoordinates) {
+        setCoordinates([
+          { id: 'topLeft', x: topLeft.x, y: topLeft.y },
+          { id: 'bottomRight', x: bottomRight.x, y: bottomRight.y }
+        ]);
+      }
+    });
+
     // Add selection handler if enabled
     if (allowPointSelection) {
       viewer.addHandler('canvas-click', (e) => {
