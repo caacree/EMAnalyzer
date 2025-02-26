@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import api from "@/api/api";
 import MIMSImageSetMenuItem from "./MimsImageSetListMenuItem";
 import MimsImageSetUploadModal from "@/components/shared/MimsImageSetUploadModal";
-import { PlusCircle, Trash2 } from "lucide-react";
+import { PlusCircle } from "lucide-react";
 
 const fetchCanvasDetail = async (id: string) => {
   const res = await api.get(`canvas/${id}/`);
@@ -14,15 +14,10 @@ const fetchCanvasDetail = async (id: string) => {
 const CanvasMenu = () => {
   const { canvasId } = useParams({ strict: false});
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const queryClient = useQueryClient();
   const { data: canvas } = useQuery({
     queryKey: ['canvas', canvasId as string],
     queryFn: () => fetchCanvasDetail(canvasId as string),
   });
-  
-  const handleDeleteMimsSet = (imageSetId: string) => {
-    api.delete(`/mims_image_set/${imageSetId}/`).then(() => queryClient.invalidateQueries());
-  };
   
   return (
     <div className="w-64 bg-gray-900 h-screen p-4 text-white">
