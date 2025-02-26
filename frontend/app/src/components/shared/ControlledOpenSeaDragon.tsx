@@ -22,6 +22,7 @@ interface canvasStoreType {
   setFlip: (flip: boolean) => void;
   setRotation: (rotation: number) => void;
   addPoint: (point: Point) => void;
+  setCoordinates: (coordinates: Point[]) => void;
 }
 interface ControlledOpenSeaDragonProps {
   iiifContent?: string;
@@ -52,6 +53,7 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
     coordinates,
     overlays,
     setZoom,
+    setCoordinates,
     setFlip,
     setRotation,
     addPoint
@@ -391,7 +393,7 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
   return (
       <div 
         ref={viewerRef} 
-        className="flex grow border"
+        className="flex grow border h-full"
         id={`controlled-openseadragon-${iiifContent || url}`} 
       />
   );
