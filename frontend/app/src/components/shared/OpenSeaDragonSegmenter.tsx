@@ -4,7 +4,7 @@ import { useParams } from "@tanstack/react-router";
 import ControlledOpenSeaDragon from "./ControlledOpenSeaDragon";
 import { strokePathToPolygon } from "@/utils/strokeToPolygon";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/shared/ui/tooltip";
-import { Pencil, MousePointer, ShapeIcon } from "lucide-react";
+import { Pencil, MousePointer, Hexagon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const OpenSeaDragonSegmenter = ({
@@ -137,7 +137,7 @@ const OpenSeaDragonSegmenter = ({
                     mode === "shapes" ? "bg-white shadow-sm" : "hover:bg-gray-200"
                   )}
                 >
-                  <ShapeIcon size={20} />
+                  <Hexagon size={20} />
                 </button>
               </TooltipTrigger>
               <TooltipContent>
