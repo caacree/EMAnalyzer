@@ -1,8 +1,11 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import api from "../../api/api";
 import { useParams } from "@tanstack/react-router";
 import ControlledOpenSeaDragon from "./ControlledOpenSeaDragon";
 import { strokePathToPolygon } from "@/utils/strokeToPolygon";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/shared/ui/tooltip";
+import { Pencil, MousePointer, ShapeIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const OpenSeaDragonSegmenter = ({
   url,
@@ -18,7 +21,7 @@ const OpenSeaDragonSegmenter = ({
   const { mimsImageId } = useParams({ strict: false });
 
   const [isInclude, setIsInclude] = React.useState<boolean>(true);
-  const [isBrushing, setIsBrushing] = React.useState(false);
+  const [mode, setMode] = useState<"shapes" | "draw" | "navigate">("shapes");
   const [brushSize, setBrushSize] = React.useState(10);
 
   // -- Keydown event handler, extended for "brush_stroke" overlays --
@@ -121,26 +124,80 @@ const OpenSeaDragonSegmenter = ({
 
   return (
     <div className="flex flex-col grow h-full">
-      {/* A small UI to toggle brush mode + size */}
-      <div style={{ marginBottom: 8 }}>
-        <label style={{ marginRight: 10 }}>
-          <input
-            type="checkbox"
-            checked={isBrushing}
-            onChange={() => setIsBrushing(!isBrushing)}
-          />
-          Enable Brush (Red)
-        </label>
-        {isBrushing && (
-          <>
-            Brush Size:{" "}
+      {/* Mode selection menu bar */}
+      <div className="flex items-center gap-4 mb-4">
+        <div className="flex bg-gray-100 rounded-md p-1">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setMode("shapes")}
+                  className={cn(
+                    "p-2 rounded-md transition-colors",
+                    mode === "shapes" ? "bg-white shadow-sm" : "hover:bg-gray-200"
+                  )}
+                >
+                  <ShapeIcon size={20} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Shape Selection Mode</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setMode("draw")}
+                  className={cn(
+                    "p-2 rounded-md transition-colors",
+                    mode === "draw" ? "bg-white shadow-sm" : "hover:bg-gray-200"
+                  )}
+                >
+                  <Pencil size={20} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Draw Mode</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setMode("navigate")}
+                  className={cn(
+                    "p-2 rounded-md transition-colors",
+                    mode === "navigate" ? "bg-white shadow-sm" : "hover:bg-gray-200"
+                  )}
+                >
+                  <MousePointer size={20} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Navigate Mode</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        {mode === "draw" && (
+          <div className="flex items-center gap-2">
+            <label htmlFor="brush-size">Brush Size:</label>
             <input
+              id="brush-size"
               type="number"
               value={brushSize}
               onChange={e => setBrushSize(parseInt(e.target.value, 10))}
-              style={{ width: 60 }}
+              className="w-16 p-1 border rounded"
+              min="1"
+              max="50"
             />
-          </>
+          </div>
         )}
       </div>
 
@@ -148,9 +205,9 @@ const OpenSeaDragonSegmenter = ({
         iiifContent={iiifContent}
         url={url}
         canvasStore={canvasStore}
-        mode={isBrushing ? "draw" : "shapes"}
+        mode={mode}
         pointSelectionMode={isInclude ? "include" : "exclude"}
-        allowBrush={isBrushing}
+        allowBrush={mode === "draw"}
         brushSize={brushSize}
       />
     </div>
