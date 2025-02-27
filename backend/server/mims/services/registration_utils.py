@@ -104,17 +104,21 @@ def iou(mask1, mask2):
     return np.sum(intersection) / np.sum(union)
 
 
-def mask_to_polygon(mask, single_polygon=True, translate=[0, 0]):
+def mask_to_polygon(mask, translate=[0, 0]):
     # Ensure the mask is of type uint8, as required by OpenCV
     mask_uint8 = mask.astype(np.uint8)
 
     # Find contours in the mask
     contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    if len(contours) == 0:
+        # No contours found; return empty list
+        return []
 
-    # Convert contours to polygons (exact boundaries)
-    polygons = [contour.reshape(-1, 2) for contour in contours]
-    # if single_polygon:
-    #    polygons = polygons[0:1]
+    # Select the largest contour by area
+    largest_contour = max(contours, key=lambda c: cv2.contourArea(c))
+
+    # polygons = [contour.reshape(-1, 2) for contour in contours]
+    polygons = [largest_contour.reshape(-1, 2)]
 
     # translate the polygons
     polygons = [
