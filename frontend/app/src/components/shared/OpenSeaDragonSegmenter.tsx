@@ -3,9 +3,8 @@ import api from "../../api/api";
 import { useParams } from "@tanstack/react-router";
 import ControlledOpenSeaDragon from "./ControlledOpenSeaDragon";
 import { strokePathToPolygon } from "@/utils/strokeToPolygon";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/shared/ui/tooltip";
 import { Pencil, MousePointer, Hexagon } from "lucide-react";
-import { cn } from "@/lib/utils";
+import TooltipIcon from "@/components/shared/ui/tooltipIcon";
 
 const OpenSeaDragonSegmenter = ({
   url,
@@ -127,62 +126,26 @@ const OpenSeaDragonSegmenter = ({
       {/* Mode selection menu bar */}
       <div className="flex items-center gap-4 mb-4">
         <div className="flex bg-gray-100 rounded-md p-1">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setMode("shapes")}
-                  className={cn(
-                    "p-2 rounded-md transition-colors",
-                    mode === "shapes" ? "bg-white shadow-sm" : "hover:bg-gray-200"
-                  )}
-                >
-                  <Hexagon size={20} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Shape Selection Mode</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setMode("draw")}
-                  className={cn(
-                    "p-2 rounded-md transition-colors",
-                    mode === "draw" ? "bg-white shadow-sm" : "hover:bg-gray-200"
-                  )}
-                >
-                  <Pencil size={20} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Draw Mode</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setMode("navigate")}
-                  className={cn(
-                    "p-2 rounded-md transition-colors",
-                    mode === "navigate" ? "bg-white shadow-sm" : "hover:bg-gray-200"
-                  )}
-                >
-                  <MousePointer size={20} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Navigate Mode</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <TooltipIcon
+            icon={Hexagon}
+            tooltipText="Shape Selection Mode"
+            onClick={() => setMode("shapes")}
+            isActive={mode === "shapes"}
+          />
+          
+          <TooltipIcon
+            icon={Pencil}
+            tooltipText="Draw Mode"
+            onClick={() => setMode("draw")}
+            isActive={mode === "draw"}
+          />
+          
+          <TooltipIcon
+            icon={MousePointer}
+            tooltipText="Navigate Mode"
+            onClick={() => setMode("navigate")}
+            isActive={mode === "navigate"}
+          />
         </div>
 
         {mode === "draw" && (
