@@ -137,7 +137,7 @@ class MIMSImageSerializer(serializers.ModelSerializer):
         canvas = obj.image_set.canvas
         em_image = canvas.images.first()
         if em_image:
-            return em_image.dzi_file.url
+            return "http://localhost:8000" + em_image.dzi_file.url
 
     def get_registration(self, obj):
         if obj.status != "AWAITING_REGISTRATION" and obj.status != "DEWARP PENDING":

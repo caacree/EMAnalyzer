@@ -27,7 +27,7 @@ class MimsImageSetCanvasDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MIMSImageSet
-        depth = 1
+        depth = 2
         fields = [
             "id",
             "canvas",

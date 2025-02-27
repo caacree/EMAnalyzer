@@ -49,10 +49,12 @@ class MIMSImageSet(CanvasObj):
 
 
 class MIMSImage(CanvasObj):
+    name = models.CharField(max_length=50, default="")
     canvas = models.ForeignKey(Canvas, on_delete=models.CASCADE, related_name="mims")
     image_set = models.ForeignKey(
         MIMSImageSet, related_name="mims_images", on_delete=models.CASCADE
     )
+    image_set_priority = models.IntegerField(default=0)
     # Status options are:
     # - "PREPROCESSING" for not yet processed
     # - "PREPROCESSED" for processed and ready for alignment
@@ -69,7 +71,10 @@ class MIMSImage(CanvasObj):
     isotopes = models.ManyToManyField(Isotope)
 
     def __str__(self):
-        return self.file.name
+        return self.name if self.name else self.file.name.split("/")[-1]
+
+    def __repr__(self):
+        return self.name if self.name else self.file.name.split("/")[-1]
 
     def delete(self, *args, **kwargs):
         # Delete the media directory with the image files

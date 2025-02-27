@@ -16,6 +16,8 @@ from mims.models import Isotope, MIMSAlignment, MIMSImage
 from skimage import exposure
 import sims
 import os
+
+os.environ["VIPS_WARNING"] = "0"
 from PIL import Image
 from scipy import ndimage
 from django.conf import settings
@@ -33,8 +35,16 @@ def preprocess_mims_image_set(mims_image_set_id):
 
     media_root = settings.MEDIA_ROOT
 
+    image_dts = {}
+
+    possible_12c_names = ["12C", "12C2"]
+    possible_13c_names = ["13C", "12C 13C"]
+    possible_15n_names = ["15N 12C", "12C 15N"]
+    possible_14n_names = ["14N 12C", "12C 14N"]
+
     for mims_image in mims_image_set.mims_images.all():
-        print(f"Processing image {mims_image.file.name}")
+        short_name = mims_image.file.name.split("/")[-1]
+        print(f"Processing image {short_name}")
         mims = sims.SIMS(mims_image.file.path)
         is_valid_file = (
             mims and (mims.data is not None) and (mims.data.species is not None)
@@ -48,6 +58,8 @@ def preprocess_mims_image_set(mims_image_set_id):
         mims_image.pixel_size_nm = mims_pixel_size
         mims_image.save()
         all_species = mims.data.species.values
+
+        image_dts[mims_image.id] = mims.header["date"]
 
         # Define the path for saving
         isotope_image_dir = os.path.join(
@@ -81,22 +93,43 @@ def preprocess_mims_image_set(mims_image_set_id):
             )
             img = Image.fromarray(autocontrast)
             img.save(autocontrast_path)
-        if "12C" in all_species and "13C" in all_species:
+        species_12c = next(
+            (name for name in possible_12c_names if name in all_species), None
+        )
+        species_13c = next(
+            (name for name in possible_13c_names if name in all_species), None
+        )
+        if species_12c and species_13c:
             c12_im = np.copy(
-                np.asarray(Image.open(os.path.join(isotope_image_dir, "12C.png")))
+                np.asarray(
+                    Image.open(os.path.join(isotope_image_dir, f"{species_12c}.png"))
+                )
             )
-            c13_im = np.asarray(Image.open(os.path.join(isotope_image_dir, "13C.png")))
+            c13_im = np.asarray(
+                Image.open(os.path.join(isotope_image_dir, f"{species_13c}.png"))
+            )
             c12_im[c12_im == 0] = 1
             ratio = Image.fromarray(
                 (np.divide(c13_im, c12_im) * 10000).astype(np.uint16)
             )
             ratio.save(os.path.join(isotope_image_dir, "13C12C_ratio.png"))
-        if "15N 12C" in all_species and "14N 12C" in all_species:
-            n15_im = np.asarray(
-                Image.open(os.path.join(isotope_image_dir, "15N 12C.png"))
+
+        species_15n = next(
+            (name for name in possible_15n_names if name in all_species), None
+        )
+        species_14n = next(
+            (name for name in possible_14n_names if name in all_species), None
+        )
+        if species_15n and species_14n:
+            n15_im = np.copy(
+                np.asarray(
+                    Image.open(os.path.join(isotope_image_dir, f"{species_15n}.png"))
+                )
             )
             n14_im = np.copy(
-                np.asarray(Image.open(os.path.join(isotope_image_dir, "14N 12C.png")))
+                np.asarray(
+                    Image.open(os.path.join(isotope_image_dir, f"{species_14n}.png"))
+                )
             )
             n14_im[n14_im == 0] = 1
             ratio = Image.fromarray(
@@ -106,11 +139,22 @@ def preprocess_mims_image_set(mims_image_set_id):
         mims_image.status = "PREPROCESSED"
         mims_image.save()
 
+    # Use the image dts to determine priority number, earlier being better and save as image_set_priority on the mims_image
+    ordered_dts = sorted(image_dts.items(), key=lambda x: x[1])
+    for i, (mims_image_id, _) in enumerate(ordered_dts):
+        mims_image = MIMSImage.objects.get(id=mims_image_id)
+        mims_image.image_set_priority = i
+        mims_image.save()
+
     # Now create the composite images
     isotopes = [i.name for i in mims_image_set.mims_images.first().isotopes.all()]
-    if "12C" in isotopes and "13C" in isotopes:
+    species_12c = next((name for name in possible_12c_names if name in isotopes), None)
+    species_13c = next((name for name in possible_13c_names if name in isotopes), None)
+    if species_12c and species_13c:
         isotopes.append("13C12C_ratio")
-    if "15N 12C" in isotopes and "14N 12C" in isotopes:
+    species_15n = next((name for name in possible_15n_names if name in isotopes), None)
+    species_14n = next((name for name in possible_14n_names if name in isotopes), None)
+    if species_15n and species_14n:
         isotopes.append("15N14N_ratio")
     for isotope in isotopes:
         relative_dir = os.path.join(

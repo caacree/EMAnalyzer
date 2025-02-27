@@ -220,6 +220,7 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
             point_coords=input_points, point_labels=input_labels
         )
         highest_mask = masks[np.argmax(scores)]
+        print(image_key, highest_mask)
         if image_key == "em":
             polygons = mask_to_polygon(highest_mask, translate=[em_bbox[0], em_bbox[1]])
         else:

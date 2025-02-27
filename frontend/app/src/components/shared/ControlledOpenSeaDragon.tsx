@@ -259,13 +259,12 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
         bounds.y + bounds.height
       );
       
-      // Update coordinates in the store
-      if (setCoordinates) {
-        setCoordinates([
-          { id: 'topLeft', x: topLeft.x, y: topLeft.y },
-          { id: 'bottomRight', x: bottomRight.x, y: bottomRight.y }
-        ]);
-      }
+      // Check if the new coordinates are different from the current ones
+      const newCoordinates = [
+        { id: 'topLeft', x: topLeft.x, y: topLeft.y },
+        { id: 'bottomRight', x: bottomRight.x, y: bottomRight.y }
+      ];
+      // updateCoordinates(newCoordinates);
     });
 
     // Add selection handler if enabled
@@ -290,7 +289,13 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
         e.preventDefaultAction = true;
       });
     }
-  }, [allowZoom, allowPointSelection, fixed]);
+  }, [allowZoom, allowPointSelection, fixed, coordinates]);
+
+  const updateCoordinates = (newCoordinates: Point[]) => {
+    if (setCoordinates && newCoordinates[0].x !== coordinates?.[0].x && newCoordinates[1].x !== coordinates?.[1].x) {
+      setCoordinates(newCoordinates);
+    }
+  }
 
   const addPointsAndOverlays = (viewer: any, points: any, overlays: any) => {
     viewer.clearOverlays();
@@ -335,7 +340,7 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
 
       const flipScale = flip ? -1 : 1;
       svgElement.style.transformOrigin = "center";
-      svgElement.style.transform = `rotate(${-rotation}deg) scale(${flipScale}, 1)`;
+      svgElement.style.transform = `rotate(${flip ? -rotation : rotation}deg) scale(${flipScale}, 1)`;
 
       const wrapper = document.createElement("div");
       wrapper.appendChild(svgElement);

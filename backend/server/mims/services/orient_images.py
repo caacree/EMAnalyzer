@@ -141,9 +141,7 @@ def orient_viewset(mims_imageviewset, points, isotope):
     transformed_bbox = transform(bbox)
 
     mims_imageviewset.flip = flip
-    mims_imageviewset.rotation_degrees = (
-        rotation_degrees if flip else 360 - rotation_degrees
-    )
+    mims_imageviewset.rotation_degrees = rotation_degrees
     mims_imageviewset.canvas_bbox = transformed_bbox.tolist()
     mims_imageviewset.pixel_size_nm = (
         mims_imageviewset.canvas.pixel_size_nm or 5
@@ -169,7 +167,7 @@ def largest_inner_square(side_length, angle):
 def calculate_individual_mims_translations(
     mims_imageviewset, isotope, transform_matrix, flip=False
 ):
-    mims_images = mims_imageviewset.mims_images.all()
+    mims_images = mims_imageviewset.mims_images.all().order_by("image_set_priority")
 
     # Load the aggregate positions and dimensions of the ROI
     ims, bboxes = load_images_and_bboxes(mims_imageviewset, isotope, flip)
@@ -185,7 +183,7 @@ def calculate_individual_mims_translations(
         roi = filename.split("_")[-1]
 
         # Define the ROI corners in the local coordinate space
-        corners = np.array(bboxes[int(roi) - 1])
+        corners = np.array(bboxes[mims_image.image_set_priority])
 
         transformed_corners = transform_matrix(corners)
 
@@ -227,152 +225,3 @@ def calculate_individual_mims_translations(
 
         mims_image.status = "NEED_USER_ALIGNMENT"
         mims_image.save()
-
-
-def calculate_individual_mims_translations2(mims_imageviewset, isotope):
-    start = time.time()
-    # Print seconds elapsed
-    mims_images = mims_imageviewset.mims_images.all()
-    # Get transformation parameters
-    flip = mims_imageviewset.flip
-    rotation_degrees = mims_imageviewset.rotation_degrees
-    composite_image = Image.fromarray(
-        get_concatenated_image(mims_imageviewset, isotope)
-    )
-    if isotope == "32S":
-        composite_image = ImageOps.invert(composite_image)
-    if flip:
-        composite_image = composite_image.transpose(Image.FLIP_LEFT_RIGHT)
-    composite_image = composite_image.rotate(-rotation_degrees, expand=True)
-    composite_image = np.array(composite_image)
-    em_image_obj = mims_imageviewset.canvas.images.first()
-    scale = mims_imageviewset.pixel_size_nm / em_image_obj.pixel_size_nm
-    # Load the EM image as a numpy array
-    em_image = Image.open(em_image_obj.file.path)
-    em_image_array = np.array(em_image)
-    scaled_em = cv2.resize(
-        em_image_array,
-        (int(em_image_array.shape[1] / scale), int(em_image_array.shape[0] / scale)),
-    )
-    # Calculate and store translations for each MIMS image
-    for mims_image in mims_images:
-        filename = mims_image.file.name.split("/")[-1].split(".")[0]
-        if "ROI_12" not in filename:
-            continue
-        roi = filename.split("_")[-1]
-        print(roi, "time1", time.time() - start)
-        im, bboxes = load_images_and_bboxes(mims_imageviewset, isotope)
-        positions = [bbox[0] for bbox in bboxes]
-        # Load the MIMS image for the isotope and load as PIL image
-        img_orig = image_from_im_file(mims_image.file.path, isotope, True)
-        img_orig = Image.fromarray(img_orig)
-        if isotope == "32S":
-            img_orig = ImageOps.invert(img_orig)
-        img = img_orig.copy()
-        # Apply the flip and rotation if necessary to it
-        if flip:
-            img = img.transpose(Image.FLIP_LEFT_RIGHT)
-        img = img.rotate(-rotation_degrees, expand=True)
-        img_array = np.array(img)
-
-        # Calculate the center of the image
-        center_x, center_y = img_array.shape[1] // 2, img_array.shape[0] // 2
-
-        # Calculate the cropping box
-        largest_inner_square_side = int(
-            largest_inner_square(img_orig.width, rotation_degrees)
-        )
-        start_x = center_x - largest_inner_square_side // 2
-        start_y = center_y - largest_inner_square_side // 2
-        end_x = center_x + largest_inner_square_side // 2
-        end_y = center_y + largest_inner_square_side // 2
-
-        # Crop the image to the largest inner square
-        cropped_img_array = img_array[start_y:end_y, start_x:end_x]
-        orig_cropped_img_array_shape = cropped_img_array.shape
-
-        # Then find the image in the composite image
-        result = cv2.matchTemplate(
-            composite_image, cropped_img_array, cv2.TM_CCOEFF_NORMED
-        )
-        _, max_val, _, max_loc = cv2.minMaxLoc(result)
-        print(
-            "loc",
-            max_val,
-            scale,
-            mims_imageviewset.canvas_y,
-            mims_imageviewset.canvas_x,
-            max_loc,
-        )
-        # Now from this approximation, find a closer match in the actual EM image
-        # Find the original EM location of the MIMS image
-        mims_y = mims_imageviewset.canvas_y + max_loc[1] * scale
-        mims_x = mims_imageviewset.canvas_x + max_loc[0] * scale
-        mims_scaled_shape = [r * scale for r in np.array(img_orig).shape]
-        em_orig_shape = em_image_array.shape
-        # Skip if sufficiently far outside of the known EM bounds
-        approx_em_loc = [mims_y, mims_x]
-        if (
-            approx_em_loc[0] < -mims_scaled_shape[0]
-            or approx_em_loc[0] > em_orig_shape[0] + mims_scaled_shape[0]
-            or approx_em_loc[1] < -mims_scaled_shape[1]
-            or approx_em_loc[1] > em_orig_shape[1] + mims_scaled_shape[1]
-        ):
-            print("Out of bounds: ", approx_em_loc, em_orig_shape, mims_scaled_shape)
-            mims_image.status = "OUTSIDE_CANVAS"
-            mims_image.save()
-            continue
-        print("Seems in bounds:", approx_em_loc, em_orig_shape, mims_scaled_shape)
-        # Then scale it down
-        mims_y_scaled = mims_y / scale
-        mims_x_scaled = mims_x / scale
-        crop_size = int(img_array.shape[0] * 1.3)
-        amt_to_add_back = crop_size * 0.5
-        crop_y_start = max(mims_y_scaled - amt_to_add_back, 0)
-        crop_y_end = min(mims_y_scaled + (crop_size * 1.5), scaled_em.shape[0])
-        crop_x_start = max(mims_x_scaled - amt_to_add_back, 0)
-        crop_x_end = min(mims_x_scaled + (crop_size * 1.5), scaled_em.shape[1])
-        scaled_em_crop = scaled_em[
-            int(crop_y_start) : int(crop_y_end), int(crop_x_start) : int(crop_x_end)
-        ]
-        y_size_limit = int(scaled_em.shape[0] - mims_y_scaled)
-        if (y_size_limit) < cropped_img_array.shape[0]:
-            if crop_y_start == 0:
-                cropped_img_array = cropped_img_array[-y_size_limit:, :]
-            else:
-                cropped_img_array = cropped_img_array[:y_size_limit, :]
-        x_size_limit = int(scaled_em.shape[1] - mims_x_scaled)
-        if (x_size_limit) < cropped_img_array.shape[1]:
-            if crop_x_start == 0:
-                cropped_img_array = cropped_img_array[:, -x_size_limit:]
-            else:
-                cropped_img_array = cropped_img_array[:, :x_size_limit]
-        # Now find the MIMS image in the crop
-        # These 2 calls take ~0.3 seconds
-        if cropped_img_array.shape[0] == 0 or cropped_img_array.shape[1] == 0:
-            mims_image.status = "NO_CELLS"
-            mims_image.save()
-            continue
-        result = cv2.matchTemplate(
-            scaled_em_crop, cropped_img_array, cv2.TM_CCOEFF_NORMED
-        )
-        _, _, _, max_loc = cv2.minMaxLoc(result)
-        scaled_cropped_em_y_start = max(max_loc[1], 0)
-        scaled_em_y_start = int(crop_y_start + scaled_cropped_em_y_start)
-        em_y_start = int(scaled_em_y_start * scale)
-        scaled_cropped_em_x_start = max(max_loc[0], 0)
-        scaled_em_x_start = int(crop_x_start + scaled_cropped_em_x_start)
-        em_x_start = int(scaled_em_x_start * scale)
-
-        mims_image.alignments.all().delete()
-        mims_image.alignments.create(
-            x_offset=em_x_start,
-            y_offset=em_y_start,
-            flip_hor=flip,
-            rotation_degrees=rotation_degrees,
-            scale=scale,
-            status="GUESS",
-        )
-        mims_image.status = "NEED_USER_ALIGNMENT"
-        mims_image.save()
-    return

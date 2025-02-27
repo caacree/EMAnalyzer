@@ -31,7 +31,7 @@ def load_images_and_bboxes(
     species="32S",
     flip=False,
 ):
-    mims_images = list(mims_image_set.mims_images.all())
+    mims_images = list(mims_image_set.mims_images.all().order_by("image_set_priority"))
 
     images = []
     bboxes = []

@@ -10,6 +10,7 @@ import ControlledOpenSeaDragon from "@/components/shared/ControlledOpenSeaDragon
 import RegistrationPage from "./RegistrationPage";
 import OpenSeaDragonSegmenter from "@/components/shared/OpenSeaDragonSegmenter";
 import { usePrepareCanvasForGuiQuery } from "@/queries/queries";
+import { cn } from "@/lib/utils";
 
 const fetchMimsImageDetail = async (id: string) => {
   const res = await api.get(`mims_image/${id}/`);
@@ -50,19 +51,9 @@ const MimsImage = () => {
       const em_bbox = [{x:min_x, y:min_y, id: "em_tl"}, {x:max_x, y:max_y, id: "em_br"}];
       setEmCoordinates(em_bbox);
       setMimsFlip(mimsImage?.image_set?.flip);
-      setMimsRotation(mimsImage?.image_set?.rotation_degrees);
+      setMimsRotation(mimsImage?.image_set?.flip ? mimsImage?.image_set?.rotation_degrees : 360 - mimsImage?.image_set?.rotation_degrees);
       setSelectedIsotope(mimsImage?.isotopes[0]?.name);
     }
-    /*api.get(`mims_image/${mimsImageId}/prepare_for_segmentation/`).then(() => {
-      const intervalId = setInterval(async () => {
-        const response = await api.get(`mims_image/${mimsImageId}/is_segmentation_ready/`);
-        if (response.data === true) {
-          setReadyToSegment(true);
-          clearInterval(intervalId);
-        }
-      }, 2000);
-      return () => clearInterval(intervalId); // Cleanup on component unmount
-    });*/
   }, [mimsImage]);
   
   const handleOutsideCanvas = () => {
@@ -83,8 +74,8 @@ const MimsImage = () => {
       mims_shapes: mimsStore.overlays.map((o: any) => o.data?.polygon).filter((p: any) => p)
     };
     api.post(`mims_image/${mimsImageId}/register/`, data).then(() => {
-      //queryClient.invalidateQueries();
-      //navigate({ to: `/canvas/${mimsImage?.image_set?.canvas.id}` });
+      queryClient.invalidateQueries();
+      navigate({ to: `/canvas/${mimsImage?.image_set?.canvas.id}` });
     })
   }
 
@@ -115,21 +106,12 @@ const MimsImage = () => {
           </div>
           <div className="flex flex-col">
             <div className="w-[600px] h-[600px]">
-              {segmentEmShapes ? (
                 <OpenSeaDragonSegmenter 
-                  iiifContent={`http://localhost:8000/${mimsImage?.em_dzi}`}
+                  iiifContent={`${mimsImage?.em_dzi}`}
                   canvasStore={canvasStore}
                   isotope="em"
+                  isSegmenting={segmentEmShapes}
                 />
-              ) : (<ControlledOpenSeaDragon 
-                iiifContent={`http://localhost:8000/${mimsImage?.em_dzi}`}
-                canvasStore={canvasStore}
-                allowZoom={true}
-                allowFlip={true}
-                allowRotation={true}
-                allowPointSelection={false}
-              />)}
-              
           </div>
           </div>
         </div>
@@ -138,8 +120,8 @@ const MimsImage = () => {
             <div><button onClick={handleReset}>Reset</button></div>
             <div><button onClick={handleOutsideCanvas}>Outside Canvas</button></div>
           </div>
-          <div className="flex grow">
-            <Tabs value={selectedIsotope}>
+          <div className="flex grow h-full">
+            <Tabs value={selectedIsotope} className="flex flex-col grow">
               <TabsList className="flex space-x-1">
                 {mimsImage?.isotopes?.map((isotope: any) => (
                   <TabsTrigger key={isotope.name} value={isotope.name} onClick={() => setSelectedIsotope(isotope.name)}>
@@ -149,12 +131,14 @@ const MimsImage = () => {
               </TabsList>
             {mimsImage?.isotopes?.map((isotope: any) => {
               const url = `http://localhost:8000/api/mims_image/${mimsImage.id}/image.png?species=${isotope.name}&autocontrast=true`
+              const isActive = selectedIsotope === isotope.name;
               return (
-                <TabsContent key={isotope.name} value={isotope.name}>
+                <TabsContent key={isotope.name} value={isotope.name}  className={cn("flex flex-col", isActive ? "grow" : "hidden")}>
                   <OpenSeaDragonSegmenter 
                     url={url}
                     canvasStore={mimsStore}
                     isotope={isotope.name}
+                    isSegmenting={segmentEmShapes}
                   />
                 </TabsContent>
             )})}

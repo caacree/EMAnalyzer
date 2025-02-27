@@ -49,8 +49,12 @@ const MimsImageSetDetail = () => {
       }
       const degrees = (selectedMimsSet?.rotation_degrees) % 360
       setMimsFlip(selectedMimsSet?.flip);
-      setMimsRotation(degrees);
-      setSelectedIsotope(Object.keys(selectedMimsSet?.composite_images)[0]);
+      setMimsRotation(selectedMimsSet?.flip ? degrees : 360 - degrees);
+      if (selectedMimsSet?.composite_images) {
+        setSelectedIsotope(Object.keys(selectedMimsSet?.composite_images)[0]);
+      } else if (selectedMimsSet?.mims_images?.length > 0) {
+        setSelectedIsotope(selectedMimsSet?.mims_images[0]?.isotopes[0]?.name);
+      }
     }
   }, [canvas, mimsImageSetId]);
     
@@ -69,6 +73,7 @@ const MimsImageSetDetail = () => {
   }  
 
   const selectedMimsSet = canvas?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSet);
+  console.log("selectedMimsSet", selectedMimsSet)
   return (
     <div className="flex">
       <CanvasMenu />
@@ -96,19 +101,25 @@ const MimsImageSetDetail = () => {
                 ))}
               </>
             ) : null}
-            {selectedMimsSet?.composite_images ? (
+            {selectedMimsSet ? (
                 <Tabs defaultValue={selectedIsotope} className="flex flex-col grow">
                   <TabsList className="flex space-x-1">
-                    {Object.keys(selectedMimsSet.composite_images).map((isotope: any) => (
-                      <TabsTrigger key={isotope} value={isotope} onClick={() => setSelectedIsotope(isotope)}>
-                        {isotope}
+                    {selectedMimsSet.mims_images?.[0].isotopes.map((isotope: any) => (
+                      <TabsTrigger key={isotope.id} value={isotope.name} onClick={() => setSelectedIsotope(isotope.name)}>
+                        {isotope.name}
                       </TabsTrigger>
                     ))}
                   </TabsList>
-                  {Object.keys(selectedMimsSet.composite_images).map((isotope: any) => {
-                    const isActive = selectedIsotope === isotope;
+                  {selectedMimsSet.mims_images?.[0].isotopes.map((isotope: any) => {
+                    const isActive = selectedIsotope === isotope.name;
+                    let iiifContent, url = undefined;
+                    if (selectedMimsSet.mims_images.length > 1) {
+                      iiifContent = "http://localhost:8000" + selectedMimsSet.composite_images[isotope]+"/info.json"
+                    } else {
+                      url = `http://localhost:8000/api/mims_image/${selectedMimsSet.mims_images[0].id}/image.png?species=${isotope.name}&autocontrast=true`
+                    }
                     return (
-                    <TabsContent key={isotope} value={isotope} className={cn("flex flex-col", isActive ? "grow" : "hidden")}>
+                    <TabsContent key={isotope.id} value={isotope.name} className={cn("flex flex-col", isActive ? "grow" : "hidden")}>
                       <div className="flex items-center justify-between">
                         <div className="flex gap-2 items-center">
                           Flip: <Checkbox checked={mimsStore.flip} onCheckedChange={setMimsFlip} />
@@ -124,7 +135,8 @@ const MimsImageSetDetail = () => {
                       </div>
                       <div className="flex grow">
                         <ControlledOpenSeaDragon 
-                        iiifContent={"http://localhost:8000" + selectedMimsSet.composite_images[isotope]+"/info.json"}
+                        iiifContent={iiifContent}
+                        url={url}
                         canvasStore={mimsStore}
                           allowZoom={true}
                           allowFlip={true}

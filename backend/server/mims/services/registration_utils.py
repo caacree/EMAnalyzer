@@ -106,7 +106,7 @@ def iou(mask1, mask2):
 
 def mask_to_polygon(mask, single_polygon=True, translate=[0, 0]):
     # Ensure the mask is of type uint8, as required by OpenCV
-    mask_uint8 = (mask * 255).astype(np.uint8)
+    mask_uint8 = mask.astype(np.uint8)
 
     # Find contours in the mask
     contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)

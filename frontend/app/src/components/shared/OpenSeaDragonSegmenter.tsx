@@ -3,8 +3,8 @@ import api from "../../api/api";
 import { useParams } from "@tanstack/react-router";
 import ControlledOpenSeaDragon from "./ControlledOpenSeaDragon";
 
-const OpenSeaDragonSegmenter = ({ url, iiifContent, canvasStore, isotope }: 
-  {url?: any; iiifContent?: any; canvasStore?: any; isotope?: any; }) => {
+const OpenSeaDragonSegmenter = ({ url, iiifContent, canvasStore, isotope, isSegmenting = true }: 
+  {url?: any; iiifContent?: any; canvasStore?: any; isotope?: any; isSegmenting?: boolean; }) => {
   
   const { mimsImageId } = useParams({ strict: false });
   const [isInclude, setIsInclude] = React.useState<boolean>(true);
@@ -53,8 +53,8 @@ const OpenSeaDragonSegmenter = ({ url, iiifContent, canvasStore, isotope }:
       iiifContent={iiifContent}
       url={url}
       canvasStore={canvasStore}
-      allowPointSelection={isInclude ? "include" : "exclude"}
-      fixed={true}
+      allowZoom={isSegmenting}
+      allowPointSelection={isSegmenting ? (isInclude ? "include" : "exclude") : false}
     />
   );
 };
