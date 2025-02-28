@@ -40,7 +40,7 @@ export const drawPolygonOrBboxOverlay = (viewer: OpenSeadragon.Viewer, overlay: 
   );
 
   // fill vs. stroke
-  if (overlay.fill) {
+  if (overlay.fill && !bbox) {
     polyline.setAttribute("fill", overlay.color || "red");
     polyline.setAttribute("stroke", "none");
   } else {
@@ -57,13 +57,15 @@ export const drawPolygonOrBboxOverlay = (viewer: OpenSeadragon.Viewer, overlay: 
   svgElement.style.transform = `rotate(${flip ? -rotation : rotation}deg) scale(${flipScale}, 1)`;
 
   const wrapper = document.createElement("div");
+  wrapper.id = overlay.id;
   wrapper.appendChild(svgElement);
 
+  viewer.removeOverlay(overlay.id);
   viewer.addOverlay({
     id: overlay.id,
     element: wrapper as unknown as HTMLElement,
     location: new OpenSeadragon.Rect(minX, minY, maxX - minX, maxY - minY),
-    checkResize: false,
+    checkResize: true,
     rotationMode: OpenSeadragon.OverlayRotationMode.BOUNDING_BOX
   });
 };

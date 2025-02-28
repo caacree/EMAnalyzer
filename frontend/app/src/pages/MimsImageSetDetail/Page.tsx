@@ -35,7 +35,7 @@ const MimsImageSetDetail = () => {
   const canvasStore = useCanvasViewer();
   const mimsStore = useMimsViewer();
   const {setFlip: setMimsFlip, setRotation: setMimsRotation} = mimsStore;
-  const [isSelectingPoints, setIsSelectingPoints] = useState(false);
+  const [mode, setMode] = useState<"shapes" | "draw" | "navigate" | "points">("navigate");
   const points = {em: canvasStore.points, mims: mimsStore.points};
 
   const image = canvas?.images?.[0];
@@ -73,7 +73,6 @@ const MimsImageSetDetail = () => {
   }  
 
   const selectedMimsSet = canvas?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSet);
-  console.log("selectedMimsSet", selectedMimsSet)
   return (
     <div className="flex">
       <CanvasMenu />
@@ -83,10 +82,7 @@ const MimsImageSetDetail = () => {
           <ControlledOpenSeaDragon 
             iiifContent={image.dzi_file} 
             canvasStore={canvasStore}
-            allowZoom={true}
-            allowFlip={false}
-            allowRotation={false}
-            allowPointSelection={isSelectingPoints}
+            mode={mode}
           />
         </div>
         <div className="flex w-1/2 max-w-1/2">
@@ -135,13 +131,10 @@ const MimsImageSetDetail = () => {
                       </div>
                       <div className="flex grow">
                         <ControlledOpenSeaDragon 
-                        iiifContent={iiifContent}
-                        url={url}
-                        canvasStore={mimsStore}
-                          allowZoom={true}
-                          allowFlip={true}
-                          allowRotation={true}
-                          allowPointSelection={isSelectingPoints}
+                          iiifContent={iiifContent}
+                          url={url}
+                          canvasStore={mimsStore}
+                          mode={mode}
                         />
                       </div>
                     </TabsContent>
@@ -166,7 +159,7 @@ const MimsImageSetDetail = () => {
         <div className="flex flex-col">
           <div className="flex gap-2 items-center">
             <div>Select points</div>
-            <Checkbox checked={isSelectingPoints} onCheckedChange={setIsSelectingPoints} />
+            <Checkbox checked={mode === "points"} onCheckedChange={() => setMode("points")} />
           </div>
           <div>Selected Points</div>
           {[...Array(Math.max(points.em?.length, points.mims?.length))].map((_, index) => {

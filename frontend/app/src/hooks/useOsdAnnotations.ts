@@ -7,11 +7,13 @@ import { CanvasStore as CanvasStoreType } from "@/interfaces/CanvasStore";
 // Import your drawing utils
 import addPointsAndOverlays from "@/utils/openseadragon/addPointsAndOverlays";
 import drawEphemeralStrokeInViewport from "@/utils/openseadragon/drawEphemeralStrokeInViewport";
+import drawEphemeralBrushCursor from "@/utils/openseadragon/drawEphemeralBrushCursor";
+import { strokePathToPolygon } from "@/utils/strokeToPolygon";
 
 interface UseOsdAnnotationsProps {
   osdViewer: OpenSeadragon.Viewer | null;
   canvasStore: CanvasStoreType;
-  mode: "shapes" | "draw" | "navigate";
+  mode: "shapes" | "draw" | "navigate" | "points";
   pointSelectionMode?: "include" | "exclude";
   brushSize?: number;
 }
@@ -23,129 +25,113 @@ export function useOsdAnnotations({
   pointSelectionMode = "include",
   brushSize = 10
 }: UseOsdAnnotationsProps) {
-  let allowZoom = false, allowBrush = false, allowPointSelection = false;
-  if (mode === "shapes") {
-    allowPointSelection = true;
-  } else if (mode === "draw") {
-    allowBrush = true;
-  } else if (mode === "navigate") {
-    allowZoom = true;
-  }
   const {
-    zoom,
     flip,
     rotation,
     points,
     overlays,
-    setZoom,
     addPoint,
     addOverlay
-    // ... other store fields if needed
   } = canvasStore;
 
   // Local state for ephemeral brush strokes
   const [activeStroke, setActiveStroke] = useState<{
     id: string;
-    path: [number, number][];
-    strokeWidth: number;
+    path: [number, number, number][];
   } | null>(null);
+  // Local state for showing the brush cursor circle
+  const [brushCursor, setBrushCursor] = useState<[number, number] | null>(null);
+
+  const getImgPt = (e: OpenSeadragon.CanvasPressEvent | OpenSeadragon.CanvasDragEvent | OpenSeadragon.CanvasReleaseEvent | OpenSeadragon.CanvasClickEvent) => {
+    if (!osdViewer) return;
+    const vpPt = osdViewer.viewport?.pointFromPixel(e.position, true);
+    const tiledImage = osdViewer?.world.getItemAt(0);
+    if (!tiledImage) return;
+    return tiledImage.viewportToImageCoordinates(vpPt.x, vpPt.y);
+  }
 
   // Each time the viewer changes or the “mode” changes, re-attach event handlers.
   useEffect(() => {
     if (!osdViewer) return;
 
     // Clear relevant handlers
-    osdViewer.removeAllHandlers("zoom");
     osdViewer.removeAllHandlers("canvas-click");
-    osdViewer.removeAllHandlers("canvas-press");
-    osdViewer.removeAllHandlers("canvas-drag");
-    osdViewer.removeAllHandlers("canvas-release");
-    osdViewer.removeAllHandlers("pan");
 
-    // (1) Zoom handler
-    if (allowZoom) {
-      osdViewer.addHandler("zoom", () => {
-        const vp = osdViewer.viewport;
-        if (!vp) return;
-        const newZoom = vp.viewportToImageZoom(vp.getZoom());
-        if (newZoom !== zoom) {
-          setZoom(newZoom);
-        }
-      });
-    }
-
-    // (2) Pan handler (if you want to track bounds)
-    osdViewer.addHandler("pan", () => {
-      // For now we only handle if you want to do something in store
-      // e.g. setCoordinates(...) with bounding box
-    });
-
-    // (3) Point-click selection
-    if (allowPointSelection) {
+    if (mode === "shapes" || mode === "points") {
       osdViewer.addHandler("canvas-click", e => {
-        const vp = osdViewer.viewport;
-        if (!vp) return;
-        const tiledImage = osdViewer.world.getItemAt(0);
-        if (!tiledImage) return;
-
-        const imageCoords = tiledImage.viewerElementToImageCoordinates(e.position);
+        const imgPt = getImgPt(e);
+        if (!imgPt) return;
 
         addPoint({
           id: Math.random().toString(),
-          x: imageCoords.x,
-          y: imageCoords.y,
+          x: imgPt.x,
+          y: imgPt.y,
           type: pointSelectionMode,
           color: pointSelectionMode === "include" ? "green" : "red"
         });
       });
-
       // Prevent default keyboard drag
       osdViewer.addHandler("canvas-key", (e: any) => {
         e.preventDefaultAction = true;
       });
     }
-
-    // (4) Brush mode
   }, [
     osdViewer,
-    allowZoom,
-    allowPointSelection,
-    allowBrush,
-    brushSize
+    mode,
+    pointSelectionMode
   ]);
 
   // Handle ephemeral stroke rendering (on every render).
   useEffect(() => {
     if (!osdViewer) return;
-    if (activeStroke && activeStroke.path.length > 1) {
+    osdViewer.removeAllHandlers("canvas-press");
+    osdViewer.removeAllHandlers("canvas-drag");
+    osdViewer.removeAllHandlers("canvas-release");
+
+    if (mode !== "draw") {
+      setBrushCursor(null);
+      setActiveStroke(null);
+    }
+
+    if (mode === "draw") {
       drawEphemeralStrokeInViewport(
         osdViewer,
-        activeStroke.path,
-        activeStroke.strokeWidth
+        brushSize,
+        flip,
+        rotation,
+        activeStroke?.path,
       );
-    }
-    if (allowBrush) {
+      drawEphemeralBrushCursor(
+        osdViewer,
+        brushCursor,
+        brushSize,
+        flip,
+        rotation
+      );
+      
       // Press
       osdViewer.addHandler("canvas-press", e => {
-        if (!osdViewer.viewport) return;
-        const vpPt = osdViewer.viewport.pointFromPixel(e.position, true);
+        const imgPt = getImgPt(e);
+        if (!imgPt) return;
         const strokeId = Math.random().toString();
-
         setActiveStroke({
           id: strokeId,
-          path: [[vpPt.x, vpPt.y]],
-          strokeWidth: brushSize
+          path: [[imgPt.x, imgPt.y, 0.5]],
         });
+        if (brushCursor) {
+          setBrushCursor(null);
+        }
       });
 
       // Drag
       osdViewer.addHandler("canvas-drag", e => {
         setActiveStroke(old => {
           if (!old || !osdViewer.viewport) return null;
-          const vpPt = osdViewer.viewport.pointFromPixel(e.position, true);
+          const imgPt = getImgPt(e);
+          if (!imgPt) return null;
           return {
             ...old,
-            path: [...old.path, [vpPt.x, vpPt.y]]
+            path: [...old.path, [imgPt.x, imgPt.y, 0.5]]
           };
         });
       });
@@ -154,33 +140,54 @@ export function useOsdAnnotations({
       osdViewer.addHandler("canvas-release", () => {
         if (!activeStroke || !osdViewer.viewport) return;
         const strokeId = activeStroke.id;
-        const { path: vpPath, strokeWidth } = activeStroke;
-
-        const tiledImage = osdViewer.world.getItemAt(0);
-        if (!tiledImage) return;
-
-        // Convert from viewport coords to image coords
-        const pathInImageCoords = vpPath.map(([vx, vy]) => {
-          const { x, y } = tiledImage.viewportToImageCoordinates(vx, vy);
-          return [x, y];
-        });
+        const { path: imgPath } = activeStroke;
 
         // Add the overlay
         addOverlay({
           id: strokeId,
-          data: { path: pathInImageCoords },
+          data: { polygon: strokePathToPolygon(imgPath, brushSize) },
           color: "red",
           type: "brush_stroke",
-          strokeWidth
+          fill: true,
+          visible: true,
         });
 
         setActiveStroke(null);
       });
+
+      const container = osdViewer.element; 
+      const onMouseMove = (ev: MouseEvent) => {
+        // Only track if not actively drawing
+        if (!activeStroke) {
+          // Convert screen coords to container-relative coords
+          const rect = container.getBoundingClientRect();
+          const offsetX = ev.clientX - rect.left;
+          const offsetY = ev.clientY - rect.top;
+          
+          // Convert to OSD viewport coords
+          const vp = osdViewer?.viewport?.pointFromPixel(
+            new OpenSeadragon.Point(offsetX, offsetY),
+            true
+          );
+          if (vp) {
+            setBrushCursor([vp.x, vp.y]);
+          }
+        }
+      }
+      
+      const onMouseLeave = () => {
+        setBrushCursor(null);
+      }
+      container.addEventListener("mousemove", onMouseMove);
+      container.addEventListener("mouseleave", onMouseLeave);
+
+      // Cleanup on unmount or when mode changes
+      return () => {
+        container.removeEventListener("mousemove", onMouseMove);
+        container.removeEventListener("mouseleave", onMouseLeave);
+      };
     }
-    if (activeStroke) {
-      drawEphemeralStrokeInViewport(osdViewer, activeStroke.path, activeStroke.strokeWidth);
-    }
-  }, [osdViewer, activeStroke]);
+  }, [osdViewer, mode, activeStroke, brushCursor]);
 
   // Whenever points, overlays, or flip/rotation change, re-draw everything
   useEffect(() => {

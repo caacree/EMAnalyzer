@@ -1,5 +1,4 @@
 import React from "react";
-import OpenSeadragon from "openseadragon";
 import { CanvasStore as CanvasStoreType } from "@/interfaces/CanvasStore";
 import { useOpenSeadragonViewer } from "@/hooks/useOpenSeaDragonViewer";
 import { useOsdAnnotations } from "@/hooks/useOsdAnnotations";
@@ -8,11 +7,8 @@ interface ControlledOpenSeaDragonProps {
   iiifContent?: string;
   url?: string;
   canvasStore: CanvasStoreType;
-  mode?: "shapes" | "draw" | "navigate";
+  mode?: "shapes" | "draw" | "navigate" | "points";
   pointSelectionMode?: "include" | "exclude";
-
-  // Brush props
-  allowBrush?: boolean;
   brushSize?: number; // in "pixel-like" units
 }
 

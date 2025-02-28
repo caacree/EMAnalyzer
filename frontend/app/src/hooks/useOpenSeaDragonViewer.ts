@@ -6,7 +6,7 @@ interface UseOpenSeadragonViewerProps {
   iiifContent?: string;
   url?: string;
   canvasStore: CanvasStoreType;
-  mode: "shapes" | "draw" | "navigate";
+  mode: "shapes" | "draw" | "navigate" | "points";
 }
 
 export function useOpenSeadragonViewer({
@@ -24,15 +24,15 @@ export function useOpenSeadragonViewer({
     rotation,
     coordinates,
     setFlip,
-    setRotation
+    setRotation,
+    setZoom
   } = canvasStore;
 
-  let allowZoom = false, allowFlip = false, allowRotation = false, allowPan = false;
+  let allowZoom = false, allowFlip = false, allowRotation = false
   if (mode === "navigate") {
     allowZoom = true;
     allowFlip = true;
     allowRotation = true;
-    allowPan = true;
   }
 
   // Store the OSD viewer instance
@@ -46,10 +46,9 @@ export function useOpenSeadragonViewer({
     if (osdViewerRef.current) {
       osdViewerRef.current.destroy();
     }
-
     osdViewerRef.current = OpenSeadragon({
       prefixUrl: "/openseadragon/images/",
-      id: viewerRef.current.id,
+      element: viewerRef.current,
       tileSources: [
         iiifContent
           ? { tileSource: iiifContent }
@@ -62,20 +61,21 @@ export function useOpenSeadragonViewer({
       gestureSettingsMouse: {
         clickToZoom: allowZoom,
         scrollToZoom: allowZoom,
-        pinchToZoom: allowZoom
+        pinchToZoom: allowZoom,
+        dragToPan: mode === "navigate"
       },
       gestureSettingsTouch: {
-        pinchToZoom: allowZoom
+        pinchToZoom: allowZoom, 
+        dragToPan: mode === "navigate"
       },
       zoomPerClick: allowZoom ? 2 : 1,
       zoomPerScroll: allowZoom ? 1.2 : 1,
-      zoomPerDblClickDrag: allowZoom ? 1.2 : 1,
-      showNavigator: allowZoom || allowRotation,
-      panHorizontal: allowPan,
-      panVertical: allowPan,
-      showNavigationControl: allowZoom || allowRotation,
-      showZoomControl: allowZoom,
-      showRotationControl: allowRotation,
+      showNavigator: mode === "navigate",
+      panHorizontal: mode === "navigate",
+      panVertical: mode === "navigate",
+      showNavigationControl: mode === "navigate",
+      showZoomControl: mode === "navigate",
+      showRotationControl: false,
       crossOriginPolicy: "Anonymous"
     });
 
@@ -97,6 +97,16 @@ export function useOpenSeadragonViewer({
         const newFlip = viewer.viewport.getFlip();
         if (newFlip !== flip) {
           setFlip(newFlip);
+        }
+      });
+    }
+    if (allowZoom) {
+      viewer.addHandler("zoom", () => {
+        const vp = viewer.viewport;
+        if (!vp) return;
+        const newZoom = vp.viewportToImageZoom(vp.getZoom());
+        if (newZoom !== zoom) {
+          setZoom(newZoom);
         }
       });
     }
@@ -137,8 +147,31 @@ export function useOpenSeadragonViewer({
         osdViewerRef.current.destroy();
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [iiifContent, url]);
+
+  useEffect(() => {
+    const viewer = osdViewerRef.current;
+    if (!viewer) return;
+    viewer.gestureSettingsMouse = {
+      clickToZoom: mode === "navigate",
+      scrollToZoom: mode === "navigate",
+      pinchToZoom: mode === "navigate",
+      dragToPan: mode === "navigate"
+    }
+    viewer.gestureSettingsTouch = {
+      pinchToZoom: mode === "navigate",
+      dragToPan: mode === "navigate"
+    }
+    viewer.zoomPerClick = mode === "navigate" ? 2 : 1;
+    viewer.zoomPerScroll = mode === "navigate" ? 1.2 : 1;
+    viewer.panHorizontal = mode === "navigate";
+    viewer.panVertical = mode === "navigate";
+    viewer.showNavigator = mode === "navigate";
+    viewer.showNavigationControl = mode === "navigate";
+    viewer.showZoomControl = mode === "navigate";
+    viewer.showRotationControl = mode === "navigate";
+    viewer.forceRedraw();
+  }, [mode])
 
   // Keep OSD zoom in sync with store
   useEffect(() => {

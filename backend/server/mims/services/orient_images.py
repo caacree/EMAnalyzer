@@ -167,6 +167,7 @@ def largest_inner_square(side_length, angle):
 def calculate_individual_mims_translations(
     mims_imageviewset, isotope, transform_matrix, flip=False
 ):
+    print("Calculating individual MIMS translations", mims_imageviewset.pixel_size_nm)
     mims_images = mims_imageviewset.mims_images.all().order_by("image_set_priority")
 
     # Load the aggregate positions and dimensions of the ROI
@@ -192,6 +193,9 @@ def calculate_individual_mims_translations(
         max_x = int(np.max(transformed_corners[:, 0])) + 1
         max_y = int(np.max(transformed_corners[:, 1])) + 1
         mims_image.canvas_bbox = transformed_corners.tolist()
+        print(
+            f"ROI {roi}: {min_x}, {min_y}, {max_x}, {max_y}, {em_shape[1]}, {em_shape[0]}"
+        )
 
         if max_x < 0 or min_x > em_shape[1] or max_y < 0 or min_y > em_shape[0]:
             mims_image.status = "OUTSIDE_CANVAS"

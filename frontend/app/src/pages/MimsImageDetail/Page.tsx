@@ -6,7 +6,6 @@ import api from "@/api/api";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/shared/ui/tabs";
 import { useCanvasViewer } from "@/stores/canvasViewer";
 import { useMimsViewer } from "@/stores/mimsViewer";
-import ControlledOpenSeaDragon from "@/components/shared/ControlledOpenSeaDragon";
 import RegistrationPage from "./RegistrationPage";
 import OpenSeaDragonSegmenter from "@/components/shared/OpenSeaDragonSegmenter";
 import { usePrepareCanvasForGuiQuery } from "@/queries/queries";
@@ -24,8 +23,6 @@ const MimsImage = () => {
   const { setFlip: setMimsFlip, setRotation: setMimsRotation } = mimsStore;
   const [openseadragonOptions, setOpenseadragonOptions] = useState<any>({defaultZoomLevel: 1});
   const [selectedIsotope, setSelectedIsotope] = useState("32S");
-  const [segmentEmShapes, setSegmentEmShapes] = useState<boolean>(true);
-  const [readyToSegment, setReadyToSegment] = useState<boolean | string>(false);
 
   const queryClient = useQueryClient();
   const navigate = useNavigate({ from: window.location.pathname });
@@ -101,7 +98,6 @@ const MimsImage = () => {
       <div className="mt-2 mb-8 flex gap-5 grow">
         <div className="flex grow flex-col">
           <div className="flex gap-4 items-center mb-2">
-            <div><input type="checkbox" checked={segmentEmShapes} onChange={() => setSegmentEmShapes(!segmentEmShapes)} /> Segment EM Shapes</div>
             <div><button onClick={handleSubmit}>Submit</button></div>
           </div>
           <div className="flex flex-col">
@@ -110,7 +106,6 @@ const MimsImage = () => {
                   iiifContent={`${mimsImage?.em_dzi}`}
                   canvasStore={canvasStore}
                   isotope="em"
-                  isSegmenting={segmentEmShapes}
                 />
           </div>
           </div>
@@ -138,7 +133,6 @@ const MimsImage = () => {
                     url={url}
                     canvasStore={mimsStore}
                     isotope={isotope.name}
-                    isSegmenting={segmentEmShapes}
                   />
                 </TabsContent>
             )})}

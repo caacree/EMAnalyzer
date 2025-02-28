@@ -2,9 +2,8 @@ import React, { useEffect, useState } from "react";
 import api from "../../api/api";
 import { useParams } from "@tanstack/react-router";
 import ControlledOpenSeaDragon from "./ControlledOpenSeaDragon";
-import { strokePathToPolygon } from "@/utils/strokeToPolygon";
 import { Pencil, MousePointer, Hexagon } from "lucide-react";
-import TooltipIcon from "@/components/shared/ui/tooltipIcon";
+import { IconTooltip } from "./ui/tooltip";
 
 const OpenSeaDragonSegmenter = ({
   url,
@@ -65,28 +64,22 @@ const OpenSeaDragonSegmenter = ({
         brushStrokes.forEach((stroke: any) => {
           // Remove the stroke overlay
           canvasStore.removeOverlay(stroke.id);
-
-          // Build a polygon at full brush width
-          const { path } = stroke.data;
-          console.log(stroke.strokeWidth);
-          const polygon = strokePathToPolygon(path, stroke.strokeWidth || 10);
-
           // Add it as a new "shape_confirmed" overlay, green fill
           canvasStore.addOverlay({
-            id: Math.random().toString(),
-            data: { polygon },
-            fill: true,
+            ...stroke,
             color: "green",
             type: "shape_confirmed"
           });
         });
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
+    if (mode === "shapes" || mode === "draw") {
+      window.addEventListener("keydown", handleKeyDown);
+    }
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [canvasStore]);
+  }, [canvasStore, mode]);
 
   // -- If the user sets points (include/exclude clicks), call segmentation API --
   useEffect(() => {
@@ -125,27 +118,16 @@ const OpenSeaDragonSegmenter = ({
     <div className="flex flex-col grow h-full">
       {/* Mode selection menu bar */}
       <div className="flex items-center gap-4 mb-4">
-        <div className="flex bg-gray-100 rounded-md p-1">
-          <TooltipIcon
-            icon={Hexagon}
-            tooltipText="Shape Selection Mode"
-            onClick={() => setMode("shapes")}
-            isActive={mode === "shapes"}
-          />
-          
-          <TooltipIcon
-            icon={Pencil}
-            tooltipText="Draw Mode"
-            onClick={() => setMode("draw")}
-            isActive={mode === "draw"}
-          />
-          
-          <TooltipIcon
-            icon={MousePointer}
-            tooltipText="Navigate Mode"
-            onClick={() => setMode("navigate")}
-            isActive={mode === "navigate"}
-          />
+        <div className="flex bg-gray-100 rounded-md p-1 space-x-2">
+          <IconTooltip content="Shape Selection Mode" isActive={mode === "shapes"} onClick={() => setMode("shapes")}>
+            <Hexagon size={20} />
+          </IconTooltip>
+          <IconTooltip content="Draw Mode" isActive={mode === "draw"} onClick={() => setMode("draw")}>
+            <Pencil size={20} />
+          </IconTooltip>
+          <IconTooltip content="Navigate Mode" isActive={mode === "navigate"} onClick={() => setMode("navigate")}>
+            <MousePointer size={20}/>
+          </IconTooltip>
         </div>
 
         {mode === "draw" && (
@@ -170,7 +152,6 @@ const OpenSeaDragonSegmenter = ({
         canvasStore={canvasStore}
         mode={mode}
         pointSelectionMode={isInclude ? "include" : "exclude"}
-        allowBrush={mode === "draw"}
         brushSize={brushSize}
       />
     </div>

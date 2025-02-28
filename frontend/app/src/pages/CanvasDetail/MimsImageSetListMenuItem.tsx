@@ -38,14 +38,13 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
   return (
       <div className="flex flex-col gap-2">
       <div 
-        className="flex items-center justify-between px-2 py-1 hover:bg-gray-800 rounded cursor-pointer"
-        onClick={() => onSelect(mimsImageSet.id)}
+        className="flex items-center justify-between px-2 py-1 hover:bg-gray-800 rounded"
       >
       <Tooltip.Provider delayDuration={100}>
         <Tooltip.Root>
           <Tooltip.Trigger asChild>
             <div className="flex items-center gap-2 truncate">
-              <span className="truncate">{mimsImageSet.name || mimsImageSet.id}</span>
+              <span onClick={() => onSelect(mimsImageSet.id)} className="truncate cursor-pointer">{mimsImageSet.name || mimsImageSet.id}</span>
               <TrashIcon onClick={() => handleDeleteMimsSet(mimsImageSet.id)} className="cursor-pointer" />
             </div>
           </Tooltip.Trigger>

@@ -33,9 +33,7 @@ const CanvasDetail = () => {
         <ControlledOpenSeaDragon 
           iiifContent={image.dzi_file} 
           canvasStore={canvasStore}
-          allowZoom={true}
-          allowFlip={false}
-          allowRotation={false}
+          mode="navigate"
         />
       </div>
     </div>

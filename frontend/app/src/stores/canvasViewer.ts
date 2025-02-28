@@ -1,28 +1,13 @@
+import { CanvasOverlay } from '@/interfaces/CanvasOverlay'
 import { create } from 'zustand'
-
-interface Point {
-  id: string
-  x: number
-  y: number
-  color?: string
-  type?: string
-}
-
-interface Overlay {
-  id: string
-  visible: boolean
-  data: any // You might want to make this more specific based on your needs
-  fill?: boolean
-  color?: string
-}
-
+import { Point } from '@/interfaces/Point'
 interface CanvasViewerState {
   zoom: number
   flip: boolean
   rotation: number
   coordinates: Point[]
   points: Point[]
-  overlays: Overlay[]
+  overlays: CanvasOverlay[]
   setZoom: (zoom: number) => void
   setFlip: (flip: boolean) => void
   setRotation: (rotation: number) => void
@@ -30,7 +15,7 @@ interface CanvasViewerState {
   addPoint: (point: Point) => void
   removePoint: (index: number) => void
   clearPoints: () => void
-  addOverlay: (overlay: Overlay) => void
+  addOverlay: (overlay: any) => void
   removeOverlay: (id: string) => void
   toggleOverlay: (id: string) => void
   clearOverlays: () => void
@@ -57,9 +42,21 @@ export const useCanvasViewer = create<CanvasViewerState>((set) => ({
   })),
   clearPoints: () => set({ points: [] }),
   
-  addOverlay: (overlay) => set((state) => ({
-    overlays: [...state.overlays, overlay]
-  })),
+  addOverlay: (overlay) => set((state) => {
+    const overlayDefaults = {
+      visible: true,
+      fill: true,
+      color: "red"
+    }
+    const newOverlay = {
+      ...overlayDefaults,
+      ...overlay,
+    }
+    const newOverlays = [...state.overlays, newOverlay];
+    return {
+      overlays: newOverlays
+    }
+  }),
   removeOverlay: (id) => set((state) => ({
     overlays: state.overlays.filter(overlay => overlay.id !== id)
   })),
