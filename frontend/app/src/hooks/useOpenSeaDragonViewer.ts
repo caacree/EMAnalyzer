@@ -17,6 +17,8 @@ export function useOpenSeadragonViewer({
 }: UseOpenSeadragonViewerProps) {
   // HTML container for OSD
   const viewerRef = useRef<HTMLDivElement | null>(null);
+  // Store the OSD viewer instance
+  const osdViewerRef = useRef<OpenSeadragon.Viewer | null>(null);
 
   const {
     zoom,
@@ -35,8 +37,6 @@ export function useOpenSeadragonViewer({
     allowRotation = true;
   }
 
-  // Store the OSD viewer instance
-  const osdViewerRef = useRef<OpenSeadragon.Viewer | null>(null);
 
   // Create or re-create the viewer
   useEffect(() => {
@@ -112,32 +112,40 @@ export function useOpenSeadragonViewer({
     }
 
     // Fit to initial coordinates if provided
-    if (coordinates && coordinates.length > 0) {
+    if ((coordinates && coordinates.length > 0) || flip || rotation) {
       viewer.addOnceHandler("open", () => {
         const tiledImage = viewer.world.getItemAt(0);
         if (!tiledImage) return;
+        if (coordinates && coordinates.length > 0) {
+          const topLeft = tiledImage.imageToViewportCoordinates(
+            coordinates[0].x,
+            coordinates[0].y
+          );
+          const bottomRight = coordinates[1]
+            ? tiledImage.imageToViewportCoordinates(
+                coordinates[1].x,
+                coordinates[1].y
+              )
+            : tiledImage.imageToViewportCoordinates(
+                coordinates[0].x + 1,
+                coordinates[0].y + 1
+              );
 
-        const topLeft = tiledImage.imageToViewportCoordinates(
-          coordinates[0].x,
-          coordinates[0].y
-        );
-        const bottomRight = coordinates[1]
-          ? tiledImage.imageToViewportCoordinates(
-              coordinates[1].x,
-              coordinates[1].y
-            )
-          : tiledImage.imageToViewportCoordinates(
-              coordinates[0].x + 1,
-              coordinates[0].y + 1
-            );
-
-        const bounds = new OpenSeadragon.Rect(
-          topLeft.x,
-          topLeft.y,
-          bottomRight.x - topLeft.x,
-          bottomRight.y - topLeft.y
-        );
-        viewer.viewport.fitBounds(bounds, true);
+          const bounds = new OpenSeadragon.Rect(
+            topLeft.x,
+            topLeft.y,
+            bottomRight.x - topLeft.x,
+            bottomRight.y - topLeft.y
+          );
+          viewer.viewport.fitBounds(bounds, true);
+        }
+        if (rotation) {
+          tiledImage.setRotation(-rotation);
+          viewer.viewport.goHome(true);
+        }
+        if (flip) {
+          tiledImage.setFlip(flip);
+        }
       });
     }
 
@@ -150,7 +158,7 @@ export function useOpenSeadragonViewer({
   }, [iiifContent, url]);
 
   useEffect(() => {
-    const viewer = osdViewerRef.current;
+    const viewer = osdViewerRef.current as any;
     if (!viewer) return;
     viewer.gestureSettingsMouse = {
       clickToZoom: mode === "navigate",
@@ -188,10 +196,12 @@ export function useOpenSeadragonViewer({
   useEffect(() => {
     const viewer = osdViewerRef.current;
     if (!viewer || !viewer.viewport) return;
+    const tiledImage = viewer.world.getItemAt(0);
+    if (!tiledImage) return;
 
-    const currentRotation = viewer.viewport.getRotation();
+    const currentRotation = tiledImage.getRotation();
     if (currentRotation !== rotation) {
-      viewer.viewport.setRotation(rotation);
+      tiledImage.setRotation(-rotation);
     }
   }, [rotation]);
 
@@ -199,10 +209,11 @@ export function useOpenSeadragonViewer({
   useEffect(() => {
     const viewer = osdViewerRef.current;
     if (!viewer || !viewer.viewport) return;
-
-    const currentFlip = viewer.viewport.getFlip();
+    const tiledImage = viewer.world.getItemAt(0);
+    if (!tiledImage) return;
+    const currentFlip = tiledImage.getFlip();
     if (currentFlip !== flip) {
-      viewer.viewport.setFlip(flip);
+      tiledImage.setFlip(flip);
     }
   }, [flip]);
 

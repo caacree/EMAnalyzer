@@ -2,15 +2,16 @@ export default function newPointIndicator(number: number, color: string, showNum
   const container = document.createElement("div");
   container.style.position = "relative";
   container.style.zIndex = "2";
+  // Center the container by shifting it 50% left and up.
 
   const dot = document.createElement("div");
-  dot.style.width = "5px";
-  dot.style.height = "5px";
+  dot.style.width = "6px";
+  dot.style.height = "6px";
   dot.style.backgroundColor = color || "red";
   dot.style.borderRadius = "50%";
   dot.style.position = "absolute";
-  dot.style.bottom = "0";
-  dot.style.left = "0";
+  dot.style.bottom = "-3px";
+  dot.style.left = "-3px";
   container.appendChild(dot);
 
   if (showNumber) {
