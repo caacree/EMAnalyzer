@@ -10,10 +10,10 @@ import addPointsAndOverlays from "@/utils/openseadragon/addPointsAndOverlays";
 import drawEphemeralStrokeInViewport from "@/utils/openseadragon/drawEphemeralStrokeInViewport";
 
 
-function getCursorSVG(brushSize: number, strokeWidth = 2, color = "black") {
-  const radius = brushSize / 2;
+function getCursorSVG(diameter: number, strokeWidth = 2, color = "black") {
+  const radius = diameter / 2;
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${brushSize}" height="${brushSize}">
+    <svg xmlns="http://www.w3.org/2000/svg" width="${diameter}" height="${diameter}">
       <circle cx="${radius}" cy="${radius}" r="${radius - strokeWidth}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" />
     </svg>
   `;
@@ -50,8 +50,6 @@ export function useOsdAnnotations({
     id: string;
     path: [number, number, number][];
   } | null>(null);
-  // Local state for showing the brush cursor circle
-  const [brushCursorCoordinates, setBrushCursorCoordinates] = useState<[number, number] | null>(null);
 
   const getImgPt = (e: OpenSeadragon.CanvasPressEvent | OpenSeadragon.CanvasDragEvent | OpenSeadragon.CanvasReleaseEvent | OpenSeadragon.CanvasClickEvent,
   ) => {
@@ -63,15 +61,18 @@ export function useOsdAnnotations({
     // 7) Now we have the unflipped/unrotated viewport coords for that click
     const tiledImage = viewer.world.getItemAt(0);
     if (!tiledImage) return null;
-    const testImgCoords = tiledImage.viewportToImageCoordinates(vpPt.x, vpPt.y);
-    return testImgCoords;
+    const imgPt = tiledImage.viewportToImageCoordinates(vpPt.x, vpPt.y);
+    if (tiledImage.getFlip()) {  // adjust condition as needed based on your implementation
+      const contentSize = tiledImage.getContentSize();
+      imgPt.x = contentSize.x - imgPt.x;
+    }
+    return imgPt;
   }
 
   useEffect(() => {
     // If user just switched away from "draw", clear out ephemeral data
     if (mode !== "draw") {
       setActiveStroke(null);
-      setBrushCursorCoordinates(null);
     }
   }, [mode]);
   /**
@@ -87,8 +88,6 @@ export function useOsdAnnotations({
       if (!imgPt) return;
       const strokeId = uuidv4();
       setActiveStroke({ id: strokeId, path: [[imgPt.x, imgPt.y, 0.5]] });
-      // Hide the brush cursor circle while pressing
-      setBrushCursorCoordinates(null);
     }
   
     function handleDrag(e: OpenSeadragon.CanvasDragEvent) {
@@ -181,14 +180,15 @@ export function useOsdAnnotations({
   useEffect(() => {
     if (!osdViewer?.element) return;
     if (mode === "draw" || mode === "shapes") {
-      const cursorUrl = getCursorSVG(brushSize, 2, "red");
-      osdViewer.element.style.cursor = `url(${cursorUrl}) ${brushSize / 2} ${brushSize / 2}, auto`;
+      const diameter = Math.max(brushSize, 10);
+      const cursorUrl = getCursorSVG(diameter, 2, "red");
+      osdViewer.element.style.cursor = `url(${cursorUrl}) ${diameter / 2} ${diameter / 2}, auto`;
       // Re-draw the ephemeral brush stroke in the viewport
       if (activeStroke?.path) {
         drawEphemeralStrokeInViewport(
           osdViewer,
           brushSize,
-          activeStroke?.path,
+          activeStroke?.path || [],
         );
       }
     } else {
@@ -199,15 +199,12 @@ export function useOsdAnnotations({
     osdViewer,
     mode,
     activeStroke,
-    brushCursorCoordinates,
-    flip,
-    rotation,
     brushSize,
   ]);
 
   // Whenever points, overlays, or flip/rotation change, re-draw everything
   useEffect(() => {
     if (!osdViewer) return;
-    addPointsAndOverlays(osdViewer, points, overlays, flip, rotation);
+    addPointsAndOverlays(osdViewer, points, overlays);
   }, [osdViewer, points, overlays, flip, rotation]);
 }

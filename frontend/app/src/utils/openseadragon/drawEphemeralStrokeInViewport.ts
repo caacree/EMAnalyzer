@@ -16,7 +16,12 @@ export default function drawEphemeralStrokeInViewport(
   if (!tiledImage) return;
 
   // Convert each stroke point from image coordinates to viewport coordinates.
+  const flip = tiledImage.getFlip();
+  const contentSize = tiledImage.getContentSize();
   const viewportPoints = imgPath.map(([ix, iy]) => {
+    if (flip) {
+      ix = contentSize.x - ix;
+    }
     const { x, y } = tiledImage.imageToViewportCoordinates(ix, iy);
     return { x, y };
   });

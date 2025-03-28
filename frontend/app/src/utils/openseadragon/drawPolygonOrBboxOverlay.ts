@@ -9,7 +9,12 @@ export const drawPolygonOrBboxOverlay = (viewer: OpenSeadragon.Viewer, overlay: 
   const tiledImage = viewer.world.getItemAt(0);
   if (!tiledImage || !coords?.length) return;
   
+  const flip = tiledImage.getFlip();
+  const contentSize = tiledImage.getContentSize();
   const viewportPoints = coords.map(([ix, iy]: [number, number]) => {
+    if (flip) {
+      ix = contentSize.x - ix;
+    }
     const { x, y } = tiledImage.imageToViewportCoordinates(ix, iy);
     return { x, y };
   });
@@ -33,10 +38,10 @@ export const drawPolygonOrBboxOverlay = (viewer: OpenSeadragon.Viewer, overlay: 
   // Connect all points + close the shape
   const relativePoints = viewportPoints
     .map(p => `${p.x - imageBounds.x},${p.y - imageBounds.y}`)
-    .join(" ");
+    .join(" ") + ` ${viewportPoints[0].x - imageBounds.x},${viewportPoints[0].y - imageBounds.y}`;
   polyline.setAttribute(
     "points",
-    relativePoints + ` ${relativePoints[0]}`
+    relativePoints
   );
 
   // fill vs. stroke

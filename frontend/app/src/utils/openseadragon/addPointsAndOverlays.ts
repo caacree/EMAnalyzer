@@ -9,8 +9,6 @@ export default function addPointsAndOverlays(
   viewer: OpenSeadragon.Viewer,
   pointsData: PointType[],
   overlaysData: CanvasOverlayType[],
-  flip: boolean,
-  rotation: number
 ) {
   try {
     viewer.clearOverlays();
@@ -21,16 +19,22 @@ export default function addPointsAndOverlays(
   // 1) Draw polygons/bboxes/brush fill
   overlaysData.forEach(overlay => {
       // Polygons, bounding boxes, suggestions, confirmed shapes, etc.
-      drawPolygonOrBboxOverlay(viewer, overlay, flip, rotation);
+      drawPolygonOrBboxOverlay(viewer, overlay);
   });
 
   // 2) Draw single points (include/exclude clicks)
   pointsData.forEach((point, idx) => {
+    const tiledImage = viewer.world.getItemAt(0);
+    if (!tiledImage) return;
+    const flip = tiledImage.getFlip();
+    const contentSize = tiledImage.getContentSize();
+    const px = flip ? contentSize.x - point.x : point.x;
+    const py = point.y;
     viewer.addOverlay({
       id: point.id,
       element: newPointIndicator(idx + 1, point.color || "red", true),
-      px: point.x,
-      py: point.y,
+      px: px,
+      py: py,
       placement: OpenSeadragon.Placement.CENTER,
       checkResize: false,
       rotationMode: OpenSeadragon.OverlayRotationMode.EXACT

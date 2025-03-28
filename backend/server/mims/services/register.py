@@ -91,14 +91,13 @@ def polygon_centroid(polygon):
     """
     Compute the centroid of a polygon given by an Nx2 array of coordinates.
     """
-    return np.mean(np.array(polygon), axis=0)
+    return np.mean(np.array(polygon), axis=0)[0:2]
 
 
 def register_images(mims_image_obj_id):
     start_time = time.time()
     mims_image = get_object_or_404(MIMSImage, pk=mims_image_obj_id)
     mims_path = Path(mims_image.file.path)
-    print(f"Registering images for {mims_image}")
     reg_loc = os.path.join(mims_path.parent, mims_path.stem)
     with open(os.path.join(reg_loc, "registration", "reg_shapes.json"), "r") as f:
         json_shapes = json.load(f)

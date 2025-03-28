@@ -37,7 +37,6 @@ export function useOpenSeadragonViewer({
     allowRotation = true;
   }
 
-
   // Create or re-create the viewer
   useEffect(() => {
     if (!viewerRef.current || (!iiifContent && !url)) return;
@@ -78,8 +77,13 @@ export function useOpenSeadragonViewer({
       showRotationControl: false,
       crossOriginPolicy: "Anonymous"
     });
-
+    
     const viewer = osdViewerRef.current;
+    viewer.addHandler('canvas-key',event => {
+      if (['q', 'w', 'e', 'r', 'a', 's', 'd', 'f'].includes(event.originalEvent.key)) {
+          event.preventDefaultAction = true;
+      }
+    });
 
     // If we allow rotation, wire up the OSD rotate event
     if (allowRotation) {
@@ -110,25 +114,30 @@ export function useOpenSeadragonViewer({
         }
       });
     }
-
     // Fit to initial coordinates if provided
     if ((coordinates && coordinates.length > 0) || flip || rotation) {
       viewer.addOnceHandler("open", () => {
         const tiledImage = viewer.world.getItemAt(0);
         if (!tiledImage) return;
-        if (coordinates && coordinates.length > 0) {
+        if (coordinates && coordinates.length > 1) {
+          const tl = {x: coordinates[0].x, y: coordinates[0].y};
+          const br = {x: coordinates[1].x, y: coordinates[1].y};
+          if (flip) {
+            tl.x = tiledImage.getContentSize().x - tl.x;
+            br.x = tiledImage.getContentSize().x - br.x;
+          }
           const topLeft = tiledImage.imageToViewportCoordinates(
-            coordinates[0].x,
-            coordinates[0].y
+            tl.x,
+            tl.y
           );
           const bottomRight = coordinates[1]
             ? tiledImage.imageToViewportCoordinates(
-                coordinates[1].x,
-                coordinates[1].y
+                br.x,
+                br.y
               )
             : tiledImage.imageToViewportCoordinates(
-                coordinates[0].x + 1,
-                coordinates[0].y + 1
+                br.x,
+                br.y
               );
 
           const bounds = new OpenSeadragon.Rect(
@@ -155,7 +164,13 @@ export function useOpenSeadragonViewer({
         osdViewerRef.current.destroy();
       }
     };
-  }, [iiifContent, url]);
+  }, [iiifContent, url, viewerRef.current]);
+
+  useEffect(() => {
+    const viewer = osdViewerRef.current as any;
+    if (!viewer) return;
+    viewer.forceRedraw();
+  }, [coordinates]);
 
   useEffect(() => {
     const viewer = osdViewerRef.current as any;

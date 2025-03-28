@@ -23,6 +23,7 @@ const MimsImageRegistration = () => {
     queryKey: ['mims_image', mimsImageId], 
     queryFn: () => fetchMimsImageDetail(mimsImageId as string)
   });
+  console.log(mimsImage, emShapes, mimsShapes)
   const onEmShapeSelect = (pos: any) => {
     setEmShapes([...emShapes, pos]);
   }
@@ -35,9 +36,10 @@ const MimsImageRegistration = () => {
       em_shapes: emShapes,
       mims_shapes: mimsShapes
     };
+    console.log(data);
     api.post(`mims_image/${mimsImageId}/register/`, data).then(() => {
       queryClient.invalidateQueries();
-      navigate({ to: `/canvas/${mimsImage?.image_set?.canvas.id}` });
+      //navigate({ to: `/canvas/${mimsImage?.image_set?.canvas.id}` });
     })
   }
   const handleReset = () => {

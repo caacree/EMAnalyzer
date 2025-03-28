@@ -4,7 +4,7 @@ import { useParams } from "@tanstack/react-router";
 import ControlledOpenSeaDragon from "./ControlledOpenSeaDragon";
 import { Pencil, MousePointer, Hexagon } from "lucide-react";
 import { IconTooltip } from "./ui/tooltip";
-
+import { v4 as uuidv4 } from 'uuid';
 const OpenSeaDragonSegmenter = ({
   url,
   iiifContent,
@@ -104,7 +104,7 @@ const OpenSeaDragonSegmenter = ({
 
         // Add new suggestion
         canvasStore.addOverlay({
-          id: Math.random().toString(),
+          id: uuidv4(),
           data: { polygon: res.data?.polygons[0] },
           fill: true,
           color: "red",

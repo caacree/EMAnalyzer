@@ -32,7 +32,6 @@ const MimsImage = () => {
     queryKey: ['mims_image', mimsImageId], 
     queryFn: () => fetchMimsImageDetail(mimsImageId as string)
   });
-
   usePrepareCanvasForGuiQuery(mimsImage?.image_set?.canvas.id);
   
   useEffect(() => {
@@ -67,12 +66,12 @@ const MimsImage = () => {
 
   const handleSubmit = () => {
     const data = {
-      em_shapes: canvasStore.overlays.map((o: any) => o.data?.polygon).filter((p: any) => p),
-      mims_shapes: mimsStore.overlays.map((o: any) => o.data?.polygon).filter((p: any) => p)
+      em_shapes: canvasStore.overlays.map((o: any) => o.data?.polygon.map((p: any) => p.slice(0, 2)).filter((p: any) => p)),
+      mims_shapes: mimsStore.overlays.map((o: any) => o.data?.polygon.map((p: any) => p.slice(0, 2)).filter((p: any) => p))
     };
     api.post(`mims_image/${mimsImageId}/register/`, data).then(() => {
       queryClient.invalidateQueries();
-      navigate({ to: `/canvas/${mimsImage?.image_set?.canvas.id}` });
+      // navigate({ to: `/canvas/${mimsImage?.image_set?.canvas.id}` });
     })
   }
 

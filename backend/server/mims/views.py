@@ -220,7 +220,6 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
             point_coords=input_points, point_labels=input_labels
         )
         highest_mask = masks[np.argmax(scores)]
-        print(image_key, highest_mask)
         if image_key == "em":
             polygons = mask_to_polygon(highest_mask, translate=[em_bbox[0], em_bbox[1]])
         else:
@@ -241,6 +240,15 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
 
         em_shapes = request.data.get("em_shapes")
         mims_shapes = request.data.get("mims_shapes")
+        if (
+            len(em_shapes) == 0
+            or len(mims_shapes) == 0
+            or len(em_shapes) != len(mims_shapes)
+        ):
+            return Response(
+                {"message": "MIMS image is not ready for registration"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         mims_path = Path(mims_image.file.path)
         reg_loc = os.path.join(mims_path.parent, mims_path.stem, "registration")
@@ -250,9 +258,11 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
                 json.dumps({"em_shapes": em_shapes, "mims_shapes": mims_shapes})
             )
 
-        register_images_task.delay(mims_image.id)
-        global predictors
-        predictors = {}
+        # register_images_task.delay(mims_image.id)
+        # mid = "7ebc9b94-69d8-45f6-84e2-8af43350164b"
+        register_images(mims_image.id)
+        # global predictors
+        # predictors = {}
         return Response(
             {
                 "message": "Registration processing",

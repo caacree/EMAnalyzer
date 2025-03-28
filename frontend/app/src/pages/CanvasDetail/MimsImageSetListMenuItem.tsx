@@ -66,8 +66,12 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
           return (a_priority <= b_priority ? -1 : 1); 
         }).map((mimsImage: any) => (
           <div key={mimsImage.id} className="flex items-center gap-2" onMouseEnter={() => updateHoverImg(mimsImage.id)} onMouseLeave={() => updateHoverImg(null)}>
-            <Link to={`/mims_image/${mimsImage.id}`} disabled={mimsImage.status === "OUTSIDE_CANVAS"}>
-              {extractFileName(mimsImage.file)}
+            <Link 
+              to={`/mims_image/${mimsImage.id}`} 
+              disabled={mimsImage.status === "OUTSIDE_CANVAS"}
+              onClick={() => updateHoverImg(null)}
+            >
+                {extractFileName(mimsImage.file)}
             </Link>
             <button>{mimsImage.status}</button>
           </div>
