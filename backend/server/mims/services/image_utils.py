@@ -8,6 +8,11 @@ import sims
 from scipy import ndimage
 from PIL import Image
 
+possible_12c_names = ["12C", "12C2"]
+possible_13c_names = ["13C", "12C 13C"]
+possible_15n_names = ["15N 12C", "12C 15N"]
+possible_14n_names = ["14N 12C", "12C 14N"]
+
 
 def manipulate_image(image, angle, flip_hor):
     manipulated_image = pyvips.Image.new_from_array(image)
@@ -226,16 +231,52 @@ def image_from_im_file(im_file, species, autocontrast=False):
     if not mims or mims.data is None or mims.data.species is None:
         raise ValueError("Invalid .im file")
 
-    if species not in mims.data.species.values:
-        raise ValueError(f"Species {species} not found in .im file")
+    def get_species_summed(mims, species):
+        # Extract and register the isotope image
+        sr = StackReg(StackReg.AFFINE)
+        sr.register_stack(mims.data.loc[species].to_numpy(), reference="previous")
+        stacked = sr.transform_stack(mims.data.loc[species].to_numpy())
+        stacked = to_uint16(stacked)
+        species_summed = stacked.sum(axis=0)
+        species_summed = ndimage.median_filter(species_summed, size=1).astype(np.uint16)
+        return species_summed
 
-    # Extract and register the isotope image
-    sr = StackReg(StackReg.AFFINE)
-    sr.register_stack(mims.data.loc[species].to_numpy(), reference="previous")
-    stacked = sr.transform_stack(mims.data.loc[species].to_numpy())
-    stacked = to_uint16(stacked)
-    species_summed = stacked.sum(axis=0)
-    species_summed = ndimage.median_filter(species_summed, size=1).astype(np.uint16)
+    species_summed = None
+    if species in mims.data.species.values:
+        species_summed = get_species_summed(mims, species)
+    elif species == "15N14N_ratio":
+        n15 = next(
+            (name for name in possible_15n_names if name in mims.data.species.values),
+            None,
+        )
+        n14 = next(
+            (name for name in possible_14n_names if name in mims.data.species.values),
+            None,
+        )
+        if n15 and n14:
+            n15 = get_species_summed(mims, n15)
+            n14 = get_species_summed(mims, n14)
+            n14[n14 == 0] = 1
+            species_summed = np.divide(n15, n14) * 10000
+        else:
+            raise ValueError(f"Species {species} not found in .im file")
+    elif species == "13C12C_ratio":
+        c13 = next(
+            (name for name in possible_13c_names if name in mims.data.species.values),
+            None,
+        )
+        c12 = next(
+            (name for name in possible_12c_names if name in mims.data.species.values),
+            None,
+        )
+        if c13 and c12:
+            print(c13, c12)
+            c13 = get_species_summed(mims, c13)
+            c12 = get_species_summed(mims, c12)
+            c12[c12 == 0] = 1
+            species_summed = np.divide(c13, c12) * 10000
+        else:
+            raise ValueError(f"Species {species} not found in .im file")
 
     if autocontrast:
         vmin, vmax = np.percentile(species_summed, (1, 99))

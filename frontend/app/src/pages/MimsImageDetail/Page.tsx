@@ -6,7 +6,6 @@ import api from "@/api/api";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/shared/ui/tabs";
 import { useCanvasViewer } from "@/stores/canvasViewer";
 import { useMimsViewer } from "@/stores/mimsViewer";
-import RegistrationPage from "./RegistrationPage";
 import OpenSeaDragonSegmenter from "@/components/shared/OpenSeaDragonSegmenter";
 import { usePrepareCanvasForGuiQuery } from "@/queries/queries";
 import { cn } from "@/lib/utils";
@@ -66,7 +65,7 @@ const MimsImage = () => {
 
   const handleSubmit = () => {
     const data = {
-      em_shapes: canvasStore.overlays.map((o: any) => o.data?.polygon.map((p: any) => p.slice(0, 2)).filter((p: any) => p)),
+      em_shapes: canvasStore.overlays.filter(p => p.data?.polygon?.length > 3).map((o: any) => o.data?.polygon.map((p: any) => p.slice(0, 2)).filter((p: any) => p)),
       mims_shapes: mimsStore.overlays.map((o: any) => o.data?.polygon.map((p: any) => p.slice(0, 2)).filter((p: any) => p))
     };
     api.post(`mims_image/${mimsImageId}/register/`, data).then(() => {
@@ -82,9 +81,6 @@ const MimsImage = () => {
     mimsStore.clearOverlays();
   }
   
-  if (["AWAITING_REGISTRATION", "REGISTERING", "DEWARP PENDING"].indexOf(mimsImage?.status) !== -1 && mimsImage?.alignments?.length) {
-    return <RegistrationPage />;
-  }
   if (!mimsImage) {
     return <div>Loading...</div>;
   }
