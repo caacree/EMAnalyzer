@@ -39,6 +39,7 @@ export function useOpenSeadragonViewer({
 
   // Create or re-create the viewer
   useEffect(() => {
+    console.log(viewerRef.current, iiifContent, url);
     if (!viewerRef.current || (!iiifContent && !url)) return;
 
     // Destroy any existing
@@ -69,6 +70,7 @@ export function useOpenSeadragonViewer({
       },
       zoomPerClick: allowZoom ? 2 : 1,
       zoomPerScroll: allowZoom ? 1.2 : 1,
+      animationTime: 0,
       showNavigator: mode === "navigate",
       panHorizontal: mode === "navigate",
       panVertical: mode === "navigate",

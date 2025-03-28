@@ -24,7 +24,7 @@ class MIMSImageSet(CanvasObj):
     status = models.CharField(max_length=50, default="PREPROCESSING")
 
     def __str__(self):
-        return f"MIMSImageSet {self.id}"
+        return f"{self.canvas.name} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
 
     def delete(self, *args, **kwargs):
         # Delete the media directory with the image files
@@ -71,10 +71,12 @@ class MIMSImage(CanvasObj):
     isotopes = models.ManyToManyField(Isotope)
 
     def __str__(self):
-        return self.name if self.name else self.file.name.split("/")[-1]
+        filename = self.name if self.name else self.file.name.split("/")[-1]
+        return f"{self.canvas.name} - {filename}"
 
     def __repr__(self):
-        return self.name if self.name else self.file.name.split("/")[-1]
+        filename = self.name if self.name else self.file.name.split("/")[-1]
+        return f"{self.canvas.name} - {filename}"
 
     def delete(self, *args, **kwargs):
         # Delete the media directory with the image files

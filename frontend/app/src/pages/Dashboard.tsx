@@ -59,7 +59,8 @@ const Dashboard = () => {
           <p>Loading...</p>
         ) : (
           <ul>
-            {canvases?.sort((a: any, b: any) => a.name.localeCompare(b.name)).map((canvas: any) => (
+            {canvases?.sort((a: any, b: any) => a.updated_at 
+              < b.updated_at ? 1 : -1).map((canvas: any) => (
               <li key={canvas.id} className="flex items-center space-x-2">
                 <Link to={`/canvas/${canvas.id}`} className="flex-grow">{canvas.name}</Link>
                 <button onClick={() => handleDelete(canvas.id)}>

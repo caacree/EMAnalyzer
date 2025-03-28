@@ -20,7 +20,7 @@ const CanvasMenu = () => {
   });
   
   return (
-    <div className="w-64 bg-gray-900 h-screen p-4 text-white">
+    <div className="w-64 bg-gray-900 h-screen overflow-scroll p-2 text-white">
       <nav className="space-y-4">
         <div className="mb-4">
           <Link to={`/canvas/${canvasId}`}><h2 className="text-lg font-semibold">Canvas: {canvas?.name}</h2></Link>

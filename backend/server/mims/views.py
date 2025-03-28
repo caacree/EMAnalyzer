@@ -235,7 +235,7 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
                 {"message": "MIMS image is not ready for registration"},
                 status=status.HTTP_400_BAD_REQUEST,
             )"""
-        mims_image.status = "REGISTERING"
+        """mims_image.status = "REGISTERING"
         mims_image.save()
 
         em_shapes = request.data.get("em_shapes")
@@ -260,7 +260,9 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
 
         # register_images_task.delay(mims_image.id)
         # mid = "7ebc9b94-69d8-45f6-84e2-8af43350164b"
-        register_images(mims_image.id)
+        """
+        print("registering images")
+        register_images(mims_image.id, shrink_em=True)
         # global predictors
         # predictors = {}
         return Response(

@@ -94,7 +94,7 @@ def polygon_centroid(polygon):
     return np.mean(np.array(polygon), axis=0)[0:2]
 
 
-def register_images(mims_image_obj_id):
+def register_images(mims_image_obj_id, shrink_em=False):
     start_time = time.time()
     mims_image = get_object_or_404(MIMSImage, pk=mims_image_obj_id)
     mims_path = Path(mims_image.file.path)
@@ -137,6 +137,9 @@ def register_images(mims_image_obj_id):
     mims_image.canvas_bbox = transformed_bbox.tolist()
     mims_image.save()
 
+    if shrink_em:
+        transformed_bbox = np.array(transformed_bbox) / scale
+
     em_shapes_transformed = em_shapes
     mims_shapes_transformed = mims_shapes
     if flip:
@@ -152,20 +155,33 @@ def register_images(mims_image_obj_id):
     mims_shapes_transformed = [
         transform(np.array(shape)) for shape in mims_shapes_transformed
     ]
+    print(em_shapes_transformed[0][0:5], scale)
+    print(mims_shapes_transformed[0][0:5])
+    if shrink_em:
+        em_shapes_transformed = [
+            np.array(shape) / scale for shape in em_shapes_transformed
+        ]
+        mims_shapes_transformed = [
+            np.array(shape) / scale for shape in mims_shapes_transformed
+        ]
+    print(em_shapes_transformed[0][0:5])
+    print(mims_shapes_transformed[0][0:5])
 
     # -----------------------------------------------------
     # Determine bounding box for the unwarping images, use 1000px padding on the EM bounds of the MIMS image
     # -----------------------------------------------------
     padding = 1000
+    if shrink_em:
+        padding = 1000 / scale
     em_bbox = np.array(
         [
             [
-                int(min(c[0] for c in mims_image.canvas_bbox) - padding),
-                int(min(c[1] for c in mims_image.canvas_bbox) - padding),
+                int(min(c[0] for c in transformed_bbox.tolist()) - padding),
+                int(min(c[1] for c in transformed_bbox.tolist()) - padding),
             ],
             [
-                int(max(c[0] for c in mims_image.canvas_bbox) + padding),
-                int(max(c[1] for c in mims_image.canvas_bbox) + padding),
+                int(max(c[0] for c in transformed_bbox.tolist()) + padding),
+                int(max(c[1] for c in transformed_bbox.tolist()) + padding),
             ],
         ]
     )
@@ -175,7 +191,9 @@ def register_images(mims_image_obj_id):
 
     width = em_bbox[1][0] - em_bbox[0][0]
     height = em_bbox[1][1] - em_bbox[0][1]
-    print(f"min_x: {min_x}, min_y: {min_y}, width: {width}, height: {height}")
+    print(
+        f"min_x: {min_x}, min_y: {min_y}, width: {width}, height: {height}, padding: {padding}"
+    )
 
     # -----------------------------------------------------
     # Shift shapes so the bounding box corner is at (0,0)
@@ -189,6 +207,8 @@ def register_images(mims_image_obj_id):
     mims_shapes_shifted = [
         shift_shape(shape, min_x, min_y) for shape in mims_shapes_transformed
     ]
+    print(mims_shapes_transformed[0][0:5])
+    print(mims_shapes_shifted[0][0:5])
     # -----------------------------------------------------
     # Create masks by rasterizing polygons
     # -----------------------------------------------------

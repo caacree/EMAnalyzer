@@ -73,6 +73,7 @@ const MimsImageSetDetail = () => {
   }  
 
   const selectedMimsSet = canvas?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSet);
+  console.log("render")
   return (
     <div className="flex">
       <CanvasMenu />
@@ -98,24 +99,24 @@ const MimsImageSetDetail = () => {
               </>
             ) : null}
             {selectedMimsSet ? (
-                <Tabs defaultValue={selectedIsotope} className="flex flex-col grow">
+                <Tabs value={selectedIsotope} className="flex flex-col grow">
                   <TabsList className="flex space-x-1">
-                    {selectedMimsSet.mims_images?.[0].isotopes.map((isotope: any) => (
-                      <TabsTrigger key={isotope.id} value={isotope.name} onClick={() => setSelectedIsotope(isotope.name)}>
-                        {isotope.name}
+                    {Object.keys(selectedMimsSet.composite_images).map((isotope: string) => (
+                      <TabsTrigger key={isotope} value={isotope} onClick={() => setSelectedIsotope(isotope)}>
+                        {isotope}
                       </TabsTrigger>
                     ))}
                   </TabsList>
-                  {selectedMimsSet.mims_images?.[0].isotopes.map((isotope: any) => {
-                    const isActive = selectedIsotope === isotope.name;
+                  {Object.keys(selectedMimsSet.composite_images).map((isotope: string) => {
+                    const isActive = selectedIsotope === isotope;
                     let iiifContent, url = undefined;
                     if (selectedMimsSet.mims_images.length > 1) {
-                      iiifContent = "http://localhost:8000" + selectedMimsSet.composite_images[isotope]+"/info.json"
+                      iiifContent = "http://localhost:8000" + selectedMimsSet.composite_images[selectedIsotope]+"/info.json"
                     } else {
-                      url = `http://localhost:8000/api/mims_image/${selectedMimsSet.mims_images[0].id}/image.png?species=${isotope.name}&autocontrast=true`
+                      url = `http://localhost:8000/api/mims_image/${selectedMimsSet.mims_images[0].id}/image.png?species=${isotope}&autocontrast=true`
                     }
                     return (
-                    <TabsContent key={isotope.id} value={isotope.name} className={cn("flex flex-col", isActive ? "grow" : "hidden")}>
+                    <TabsContent key={isotope} value={isotope} className={cn("flex flex-col", isActive ? "grow" : "hidden")}>
                       <div className="flex items-center justify-between">
                         <div className="flex gap-2 items-center">
                           Flip: <Checkbox checked={mimsStore.flip} onCheckedChange={setMimsFlip} />
@@ -159,7 +160,7 @@ const MimsImageSetDetail = () => {
         <div className="flex flex-col">
           <div className="flex gap-2 items-center">
             <div>Select points</div>
-            <Checkbox checked={mode === "points"} onCheckedChange={() => setMode("points")} />
+            <Checkbox checked={mode === "points"} onCheckedChange={() => mode === "points" ? setMode("navigate") : setMode("points")} />
           </div>
           <div>Selected Points</div>
           {[...Array(Math.max(points.em?.length, points.mims?.length))].map((_, index) => {
