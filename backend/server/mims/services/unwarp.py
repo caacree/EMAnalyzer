@@ -1,9 +1,12 @@
 import SimpleITK as sitk
-from mims.services.image_utils import extract_final_digit
-from mims.models import MIMSImageSet
+from skimage.transform import SimilarityTransform, warp
+from mims.model_utils import load_images_and_bboxes
+from mims.services.image_utils import extract_final_digit, image_from_im_file
+from mims.models import MIMSImageSet, MimsTiffImage
 from mims.services.registration_utils import create_composite_mask
 import os
 import cv2
+import sims
 import tifffile
 import numpy as np
 from PIL import Image
@@ -18,7 +21,7 @@ def command_iteration(method):
     print(f"{method.GetOptimizerIteration():3} " + f"= {method.GetMetricValue():10.5f}")
 
 
-def unwarp_image(mims_image):
+def make_unwarp_transform(mims_image):
     reg_loc = os.path.join(media_root, mims_image.file.path[:-3])
 
     # Read the fixed and moving images
@@ -79,6 +82,89 @@ def unwarp_image(mims_image):
         os.path.join(reg_loc, "composite_mask_unwarped.png")
     )
     return
+
+
+def make_unwarp_images(mims_image):
+    reg_loc = os.path.join(media_root, mims_image.file.path[:-3])
+    tfm = os.path.join(reg_loc, "mims_transform.tfm")
+    em_reference_fn = os.path.join(reg_loc, "em_mask_for_unwarp.tiff")
+    mims = sims.SIMS(mims_image.file.path)
+
+    for species in list(mims.data.species.values) + ["13C12C_ratio", "15N14N_ratio"]:
+        img = image_from_im_file(mims_image.file.path, species, autocontrast=False)
+
+        if img is None:
+            continue
+        # Transform the img
+        if mims_image.flip:
+            ims, bboxes = load_images_and_bboxes(mims_image.image_set, "SE", flip=True)
+            max_x = np.max([pos[0] for bbox in bboxes for pos in bbox])
+            img = np.array(img).copy()
+            img[:, 0] = -img[:, 0]  # Flip x-coordinates
+            # Shift all x-coordinates to ensure they are positive
+            img[:, 0] += abs(max_x)
+        reg_bbox = mims_image.registration_bbox
+        reg_bbox_wh = [reg_bbox[1][0] - reg_bbox[0][0], reg_bbox[1][1] - reg_bbox[0][1]]
+
+        saved_img_loc = os.path.join(reg_loc, f"temp-{species}.tiff")
+        padding = int(reg_bbox_wh[0] - img.shape[0]) // 2
+        img = np.pad(img, padding, mode="constant", constant_values=0)
+        reg_bbox = mims_image.registration_bbox
+        x_min, y_min = reg_bbox[0]
+        x_max, y_max = reg_bbox[1]
+        width, height = x_max - x_min, y_max - y_min
+        stored_transform = SimilarityTransform(matrix=np.array(mims_image.transform))
+        print(reg_bbox, stored_transform.translation / stored_transform.scale)
+        offset_transform = SimilarityTransform(
+            translation=(-x_min, -y_min), scale=1 / stored_transform.scale
+        )
+        composed_matrix = offset_transform.params @ stored_transform.params
+        full_transform = SimilarityTransform(
+            scale=1,
+            rotation=stored_transform.rotation,
+            translation=(
+                -x_min + stored_transform.translation[0] / stored_transform.scale,
+                -y_min + stored_transform.translation[1] / stored_transform.scale,
+            ),
+        )
+        print(
+            "full_transform",
+            full_transform.scale,
+            full_transform.rotation,
+            full_transform.translation,
+        )
+        print(full_transform([256, 256]))
+        img = warp(
+            img,
+            inverse_map=full_transform.inverse,
+            preserve_range=True,
+        )
+        print("img", img.shape, img.dtype, np.mean(img))
+        img = img.astype(np.uint16)
+        tifffile.imwrite(saved_img_loc, img)
+        unwarped_img = unwarp_image(tfm, em_reference_fn, saved_img_loc)
+        unwarped_img = Image.fromarray(unwarped_img)
+        unwarped_img_loc = os.path.join(reg_loc, f"unwarped-{species}.png")
+        unwarped_img.save(unwarped_img_loc)
+        tiff_image = MimsTiffImage(
+            mims_image=mims_image,
+            image=unwarped_img_loc,
+            name=species,
+        )
+        tiff_image.save()
+        # os.remove(saved_img_loc)
+
+
+def unwarp_image(tfm_file, reference_image_fn, moving_image_fn):
+    tfm = sitk.ReadTransform(tfm_file)
+    reference_image = sitk.ReadImage(reference_image_fn)  # , sitk.sitkUInt16)
+    moving_image = sitk.ReadImage(moving_image_fn)  # , sitk.sitkUInt16)
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetReferenceImage(reference_image)
+    resampler.SetInterpolator(sitk.sitkLinear)
+    resampler.SetDefaultPixelValue(0)
+    resampler.SetTransform(tfm)
+    return sitk.GetArrayFromImage(resampler.Execute(moving_image))
 
 
 def create_unwarped_composites(mims_imageset_id, full_em_shape):

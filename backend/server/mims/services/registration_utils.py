@@ -2,11 +2,23 @@ import cv2
 import numpy as np
 from PIL import Image
 import time
+import math
 import os
 from pathlib import Path
 from scipy.spatial import ConvexHull
 
 from mims.model_utils import get_autocontrast_image_path
+
+
+def get_rotated_dimensions(width, height, transform_params):
+    # Extract the rotation angle in radians from the transform
+    theta = transform_params.rotation
+
+    # Compute the new dimensions needed to contain the rotated image.
+    new_width = math.ceil(abs(width * math.cos(theta)) + abs(height * math.sin(theta)))
+    new_height = math.ceil(abs(width * math.sin(theta)) + abs(height * math.cos(theta)))
+
+    return new_width, new_height
 
 
 def create_composite_mask(em_mask, mims_mask):

@@ -259,7 +259,7 @@ def image_from_im_file(im_file, species, autocontrast=False):
             n14[n14 == 0] = 1
             species_summed = np.divide(n15, n14) * 10000
         else:
-            raise ValueError(f"Species {species} not found in .im file")
+            None
     elif species == "13C12C_ratio":
         c13 = next(
             (name for name in possible_13c_names if name in mims.data.species.values),
@@ -270,13 +270,12 @@ def image_from_im_file(im_file, species, autocontrast=False):
             None,
         )
         if c13 and c12:
-            print(c13, c12)
             c13 = get_species_summed(mims, c13)
             c12 = get_species_summed(mims, c12)
             c12[c12 == 0] = 1
             species_summed = np.divide(c13, c12) * 10000
         else:
-            raise ValueError(f"Species {species} not found in .im file")
+            None
 
     if autocontrast:
         vmin, vmax = np.percentile(species_summed, (1, 99))

@@ -54,6 +54,7 @@ class MIMSImage(CanvasObj):
     image_set = models.ForeignKey(
         MIMSImageSet, related_name="mims_images", on_delete=models.CASCADE
     )
+    transform = models.JSONField(null=True, blank=True)
     image_set_priority = models.IntegerField(default=0)
     # Status options are:
     # - "PREPROCESSING" for not yet processed
@@ -83,6 +84,19 @@ class MIMSImage(CanvasObj):
         if self.file:
             os.remove(self.file.path)
         super().delete(*args, **kwargs)
+
+
+class MimsTiffImage(AbstractBaseModel):
+    mims_image = models.ForeignKey(
+        MIMSImage, on_delete=models.CASCADE, related_name="mims_tiff_images"
+    )
+    image = models.FileField(upload_to=get_mims_image_upload_path)
+    name = models.CharField(max_length=50, default="")
+    registration_bbox = models.JSONField(null=True, blank=True)
+
+    def __str__(self):
+        filename = self.name if self.name else self.image.name.split("/")[-1]
+        return f"{self.mims_image.canvas.name} - {filename}"
 
 
 class MIMSAlignment(AbstractBaseModel):

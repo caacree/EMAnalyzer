@@ -1,29 +1,28 @@
 import json
+import math
 import time
 from django.shortcuts import get_object_or_404
-from mims.services.unwarp import create_unwarped_composites
-from mims.services.orient_images import get_points_transform, largest_inner_square
+from mims.services.image_utils import image_from_im_file
+from mims.services.orient_images import get_points_transform
 from mims.services.registration_utils import (
     create_composite_mask,
-    create_mask_from_shapes,
     scale_between_masks,
     test_mask_iou,
 )
-from shapely.geometry import Polygon
-from rasterio.features import rasterize
-from rasterio.transform import Affine
 from skimage.draw import polygon
+from skimage.transform import warp
 from mims.model_utils import (
     get_autocontrast_image_path,
     load_images_and_bboxes,
 )
-from mims.models import Isotope, MIMSAlignment, MIMSImage
+from mims.models import MIMSImage
 import os
 from pathlib import Path
 import cv2
 from PIL import Image
+from mims.services.registration_utils import get_rotated_dimensions
 import numpy as np
-from mims.services import unwarp_image
+from mims.services.unwarp import make_unwarp_transform, make_unwarp_images
 
 MASK_PADDING = 20
 
@@ -116,29 +115,9 @@ def register_images(mims_image_obj_id, shrink_em=False):
         rotation_degrees += 360
 
     mims_image.flip = flip
+    mims_image.transform = transform.params.tolist()
     mims_image.rotation_degrees = rotation_degrees
     mims_image.pixel_size_nm = (mims_image.canvas.pixel_size_nm or 5) * scale
-    bbox = np.array([[0, 0], [512, 0], [512, 512], [0, 512]])
-
-    if flip:
-        # Need to get the correct offset for the bbox once flipped, since the
-        # Estimate_transform in get_points_transform uses these translated coordinates
-        ims, bboxes = load_images_and_bboxes(mims_image.image_set, "SE", flip=True)
-        max_x = np.max([pos[0] for bbox_ in bboxes for pos in bbox_])
-
-        bbox_flipped = bbox.copy()
-        bbox_flipped[:, 0] = -bbox_flipped[:, 0]  # x -> -x
-        bbox_flipped[:, 0] += abs(max_x)
-
-        transformed_bbox = transform(bbox_flipped)
-    else:
-        transformed_bbox = transform(bbox)
-
-    mims_image.canvas_bbox = transformed_bbox.tolist()
-    mims_image.save()
-
-    if shrink_em:
-        transformed_bbox = np.array(transformed_bbox) / scale
 
     em_shapes_transformed = em_shapes
     mims_shapes_transformed = mims_shapes
@@ -155,8 +134,6 @@ def register_images(mims_image_obj_id, shrink_em=False):
     mims_shapes_transformed = [
         transform(np.array(shape)) for shape in mims_shapes_transformed
     ]
-    print(em_shapes_transformed[0][0:5], scale)
-    print(mims_shapes_transformed[0][0:5])
     if shrink_em:
         em_shapes_transformed = [
             np.array(shape) / scale for shape in em_shapes_transformed
@@ -164,36 +141,78 @@ def register_images(mims_image_obj_id, shrink_em=False):
         mims_shapes_transformed = [
             np.array(shape) / scale for shape in mims_shapes_transformed
         ]
-    print(em_shapes_transformed[0][0:5])
-    print(mims_shapes_transformed[0][0:5])
 
     # -----------------------------------------------------
-    # Determine bounding box for the unwarping images, use 1000px padding on the EM bounds of the MIMS image
-    # -----------------------------------------------------
-    padding = 1000
-    if shrink_em:
-        padding = 1000 / scale
-    em_bbox = np.array(
+    # Determine bounding box for the unwarping images
+    # This is the rotated size of the MIMS, + int(10% of it)
+    # -----------------------------------------------------\
+    raw_mims = image_from_im_file(mims_image.file.path, "SE")
+    rotated_dimensions = get_rotated_dimensions(
+        raw_mims.shape[1], raw_mims.shape[0], transform
+    )
+    desired_dimensions = int(rotated_dimensions[0] * 1.1), int(
+        rotated_dimensions[1] * 1.1
+    )
+    padding = (
+        (desired_dimensions[0] - raw_mims.shape[1]) // 2,
+        (desired_dimensions[1] - raw_mims.shape[0]) // 2,
+    )
+    raw_mims = np.pad(raw_mims, padding, mode="constant", constant_values=0)
+
+    def bbox_to_wh(bbox_):
+        return (
+            max(bbox_[:, 0]) - min(bbox_[:, 0]),
+            max(bbox_[:, 1]) - min(bbox_[:, 1]),
+        )
+
+    bbox = np.array([[0, 0], [512, 0], [512, 512], [0, 512]])
+
+    transformed_bbox = None
+    if flip:
+        # Need to get the correct offset for the bbox once flipped, since the
+        # Estimate_transform in get_points_transform uses these translated coordinates
+        ims, bboxes = load_images_and_bboxes(mims_image.image_set, "SE", flip=True)
+        max_x = np.max([pos[0] for bbox_ in bboxes for pos in bbox_])
+
+        bbox_flipped = bbox.copy()
+        bbox_flipped[:, 0] = -bbox_flipped[:, 0]  # x -> -x
+        bbox_flipped[:, 0] += abs(max_x)
+
+        transformed_bbox = transform(bbox_flipped)
+    else:
+        transformed_bbox = transform(bbox)
+    ten_pct = int(bbox_to_wh(transformed_bbox)[0] * 0.1)
+    extra_bbox = [
         [
-            [
-                int(min(c[0] for c in transformed_bbox.tolist()) - padding),
-                int(min(c[1] for c in transformed_bbox.tolist()) - padding),
-            ],
-            [
-                int(max(c[0] for c in transformed_bbox.tolist()) + padding),
-                int(max(c[1] for c in transformed_bbox.tolist()) + padding),
-            ],
-        ]
-    )
+            min(transformed_bbox[:, 0]) - ten_pct,
+            min(transformed_bbox[:, 1]) - ten_pct,
+        ],
+        [
+            max(transformed_bbox[:, 0]) + ten_pct,
+            max(transformed_bbox[:, 1]) + ten_pct,
+        ],
+    ]
 
-    min_x = em_bbox[0][0]
-    min_y = em_bbox[0][1]
+    mims_image.canvas_bbox = transformed_bbox.tolist()
+    mims_image.save()
 
-    width = em_bbox[1][0] - em_bbox[0][0]
-    height = em_bbox[1][1] - em_bbox[0][1]
-    print(
-        f"min_x: {min_x}, min_y: {min_y}, width: {width}, height: {height}, padding: {padding}"
+    if shrink_em:
+        transformed_bbox = np.array(transformed_bbox) / scale
+        extra_bbox = np.array(extra_bbox) / scale
+    edge_size = math.ceil(
+        max(extra_bbox[1][0] - extra_bbox[0][0], extra_bbox[1][1] - extra_bbox[0][1])
     )
+    extra_bbox[0] = np.floor(extra_bbox[0])
+    extra_bbox[1] = extra_bbox[0] + edge_size
+
+    mims_image.registration_bbox = extra_bbox
+    mims_image.save()
+
+    min_x = extra_bbox[0][0]
+    min_y = extra_bbox[0][1]
+
+    width = int(extra_bbox[1][0] - extra_bbox[0][0])
+    height = int(extra_bbox[1][1] - extra_bbox[0][1])
 
     # -----------------------------------------------------
     # Shift shapes so the bounding box corner is at (0,0)
@@ -207,8 +226,14 @@ def register_images(mims_image_obj_id, shrink_em=False):
     mims_shapes_shifted = [
         shift_shape(shape, min_x, min_y) for shape in mims_shapes_transformed
     ]
-    print(mims_shapes_transformed[0][0:5])
-    print(mims_shapes_shifted[0][0:5])
+
+    mims_shifted_centroids = np.array(
+        [polygon_centroid(mp) for mp in mims_shapes_shifted]
+    )
+    final_transform = get_points_transform(
+        mims_image.image_set, mims_shifted_centroids, mims_centroids
+    )
+    print(final_transform.params)
     # -----------------------------------------------------
     # Create masks by rasterizing polygons
     # -----------------------------------------------------
@@ -244,16 +269,12 @@ def register_images(mims_image_obj_id, shrink_em=False):
     print(f"EM mask saved to {em_mask_path}")
     print(f"MIMS mask saved to {mims_mask_path}")
 
-    print("starting unwarping")
     mims_image.status = "DEWARPING"
     mims_image.save()
-    unwarp_image(mims_image)
+    # make_unwarp_transform(mims_image)
     mims_image.status = "DEWARPED_ALIGNED"
     mims_image.save()
-    print("done unwarping")
-    # Check if the imageset is complete
-    # create_unwarped_composites(mims_image.image_set.id, full_em_shape=full_em.shape)
-    # print("done creating unwarped composites")
+    make_unwarp_images(mims_image)
 
 
 def get_images_from_alignment(mims_img_obj, full_em):
