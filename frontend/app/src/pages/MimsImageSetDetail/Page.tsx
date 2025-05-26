@@ -73,7 +73,7 @@ const MimsImageSetDetail = () => {
   }  
 
   const selectedMimsSet = canvas?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSet);
-  console.log("render")
+  console.log(selectedMimsSet)
   return (
     <div className="flex">
       <CanvasMenu />
@@ -101,13 +101,13 @@ const MimsImageSetDetail = () => {
             {selectedMimsSet ? (
                 <Tabs value={selectedIsotope} className="flex flex-col grow">
                   <TabsList className="flex space-x-1">
-                    {Object.keys(selectedMimsSet.composite_images).map((isotope: string) => (
+                    {Object.keys(selectedMimsSet?.composite_images || {}).map((isotope: string) => (
                       <TabsTrigger key={isotope} value={isotope} onClick={() => setSelectedIsotope(isotope)}>
                         {isotope}
                       </TabsTrigger>
                     ))}
                   </TabsList>
-                  {Object.keys(selectedMimsSet.composite_images).map((isotope: string) => {
+                  {Object.keys(selectedMimsSet?.composite_images || {}).map((isotope: string) => {
                     const isActive = selectedIsotope === isotope;
                     let iiifContent, url = undefined;
                     if (selectedMimsSet.mims_images.length > 1) {

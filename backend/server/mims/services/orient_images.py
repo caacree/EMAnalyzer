@@ -82,6 +82,68 @@ def calculate_translations(
 
 
 def get_points_transform(mims_imageviewset, mims_points, em_points):
+    """
+    Determines the best similarity transform between MIMS and EM points,
+    explicitly checking for a horizontal flip.
+
+    Returns:
+        tuple: (SimilarityTransform, bool, float|None):
+               The best transform, whether a flip was applied,
+               and max_x offset if flip was true.
+    """
+    tform_no_flip = estimate_transform("similarity", mims_points, em_points)
+    error_no_flip = calculate_transformation_error(
+        tform_no_flip, mims_points, em_points
+    )
+
+    try:
+        # Use the associated MIMSImage within the viewset to get file path
+        mims_img_path = mims_imageviewset.mims_images.first().file.path
+        raw_mims_shape = image_from_im_file(
+            mims_img_path, "SE", autocontrast=False
+        ).shape
+
+        # Try loading bboxes, fallback to image width
+        try:
+            ims, bboxes = load_images_and_bboxes(mims_imageviewset, "SE", flip=True)
+            if not bboxes or not any(bboxes):
+                print(
+                    "Warning: No bounding boxes found for flip calc. Using image width."
+                )
+                max_x = raw_mims_shape[1]  # Use width
+            else:
+                max_x = np.max([pos[0] for bbox in bboxes if bbox for pos in bbox])
+        except Exception as e_bbox:
+            print(f"Warning: Error loading bboxes ({e_bbox}). Using image width.")
+            max_x = raw_mims_shape[1]  # Use width
+
+    except Exception as e_img:
+        print(f"ERROR: Cannot load MIMS image/shape for max_x calculation: {e_img}")
+        # Handle this error more gracefully, maybe raise it or use a default?
+        # For now, let's raise it to make it explicit.
+        raise ValueError(f"Failed to determine max_x for flip calculation: {e_img}")
+
+    mims_points_flipped = mims_points.copy()
+    mims_points_flipped[:, 0] = -mims_points_flipped[:, 0]
+    mims_points_flipped[:, 0] += abs(max_x)
+
+    tform_with_flip = estimate_transform("similarity", mims_points_flipped, em_points)
+    error_with_flip = calculate_transformation_error(
+        tform_with_flip, mims_points_flipped, em_points
+    )
+
+    if error_with_flip < error_no_flip:
+        selected_tform = tform_with_flip
+        flip = True
+    else:
+        selected_tform = tform_no_flip
+        flip = False
+
+    return selected_tform, flip, max_x
+
+
+# --- End of get_points_transform ---
+def get_points_transform2(mims_imageviewset, mims_points, em_points):
     tform_no_flip = estimate_transform("similarity", mims_points, em_points)
     error_no_flip = calculate_transformation_error(
         tform_no_flip, mims_points, em_points
@@ -121,7 +183,7 @@ def orient_viewset(mims_imageviewset, points, isotope):
     em_points = np.array([[point["x"], point["y"]] for point in points["em"]])
     mims_points = np.array([[point["x"], point["y"]] for point in points["mims"]])
 
-    transform, flip = get_points_transform(mims_imageviewset, mims_points, em_points)
+    transform, flip = get_points_transform2(mims_imageviewset, mims_points, em_points)
 
     # Extract transformation parameters
     scale = transform.scale

@@ -215,7 +215,7 @@ def find_transformation(image1_path, image2_path, points1, points2):
     return translation, rotation, flip
 
 
-def image_from_im_file(im_file, species, autocontrast=False):
+def image_from_im_file(im_file, species, autocontrast=False, binarize=False):
     """
     Extract image data for a specific species from an .im file
 
@@ -282,7 +282,8 @@ def image_from_im_file(im_file, species, autocontrast=False):
         species_summed = exposure.rescale_intensity(
             species_summed, in_range=(vmin, vmax), out_range=(0, 255)
         ).astype(np.uint8)
-
+    elif binarize:
+        species_summed = np.where(species_summed > 0, 255, 0).astype(np.uint8)
     return species_summed
 
 

@@ -4,7 +4,7 @@ from rest_framework import serializers
 from django.conf import settings
 import os
 from image.models import Image
-from mims.models import MIMSImageSet, MIMSImage, Isotope, MIMSAlignment
+from mims.models import MIMSImageSet, MIMSImage, Isotope, MIMSAlignment, MimsTiffImage
 from pathlib import Path
 
 
@@ -102,12 +102,19 @@ class MIMSAlignmentSerializer(serializers.ModelSerializer):
         ]
 
 
+class MimsTiffImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MimsTiffImage
+        fields = ["id", "name", "image", "registration_bbox"]
+
+
 # Update MIMSImageSerializer to include alignments
 class MIMSImageSerializer(serializers.ModelSerializer):
     isotopes = serializers.SerializerMethodField()
     image_set = MIMSImageSetSerializer(read_only=True)
     em_dzi = serializers.SerializerMethodField()
     registration = serializers.SerializerMethodField()
+    mims_tiff_images = MimsTiffImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = MIMSImage
@@ -123,6 +130,7 @@ class MIMSImageSerializer(serializers.ModelSerializer):
             "canvas_bbox",
             "em_dzi",
             "registration",
+            "mims_tiff_images",
         ]
 
     def get_isotopes(self, obj):
@@ -157,3 +165,6 @@ class MIMSImageSerializer(serializers.ModelSerializer):
                 Path(base).parent, "isotopes", f"{isotope.name}_autocontrast.png"
             )
         return urls
+
+    def get_unwarped_images(self, obj):
+        return []

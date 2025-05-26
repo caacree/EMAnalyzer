@@ -15,6 +15,10 @@ from django.conf import settings
 
 media_root = settings.MEDIA_ROOT
 
+possible_12c_names = ["12C", "12C2"]
+possible_13c_names = ["13C", "12C 13C"]
+possible_15n_names = ["15N 12C", "12C 15N"]
+possible_14n_names = ["14N 12C", "12C 14N"]
 
 def command_iteration(method):
     """Callback invoked when the optimization has an iteration"""
@@ -26,10 +30,12 @@ def make_unwarp_transform(mims_image):
 
     # Read the fixed and moving images
     fixed_image = sitk.ReadImage(
-        os.path.join(reg_loc, "em_mask_for_unwarp.tiff"), sitk.sitkFloat32
+        os.path.join(reg_loc, "registration", "em_mask_for_unwarp.tiff"),
+        sitk.sitkFloat32,
     )
     moving_image = sitk.ReadImage(
-        os.path.join(reg_loc, "mims_mask_for_unwarp.tiff"), sitk.sitkFloat32
+        os.path.join(reg_loc, "registration", "mims_mask_for_unwarp.tiff"),
+        sitk.sitkFloat32,
     )
 
     # Set up the BSpline transformation
@@ -84,77 +90,58 @@ def make_unwarp_transform(mims_image):
     return
 
 
-def make_unwarp_images(mims_image):
+def make_unwarp_images(mims_image, registration_bbox=None):
     reg_loc = os.path.join(media_root, mims_image.file.path[:-3])
     tfm = os.path.join(reg_loc, "mims_transform.tfm")
-    em_reference_fn = os.path.join(reg_loc, "em_mask_for_unwarp.tiff")
+    em_reference_fn = os.path.join(reg_loc, "registration", "em_mask_for_unwarp.tiff")
     mims = sims.SIMS(mims_image.file.path)
+    mims_image.mims_tiff_images.all().delete()
+    isotopes = list(mims_image.isotopes.all())
+    for isotope in isotopes:
+        img = os.path.join(reg_loc, "registration", f"{isotope.name}_warped.tiff")
 
-    for species in list(mims.data.species.values) + ["13C12C_ratio", "15N14N_ratio"]:
-        img = image_from_im_file(mims_image.file.path, species, autocontrast=False)
-
-        if img is None:
-            continue
-        # Transform the img
-        if mims_image.flip:
-            ims, bboxes = load_images_and_bboxes(mims_image.image_set, "SE", flip=True)
-            max_x = np.max([pos[0] for bbox in bboxes for pos in bbox])
-            img = np.array(img).copy()
-            img[:, 0] = -img[:, 0]  # Flip x-coordinates
-            # Shift all x-coordinates to ensure they are positive
-            img[:, 0] += abs(max_x)
-        reg_bbox = mims_image.registration_bbox
-        reg_bbox_wh = [reg_bbox[1][0] - reg_bbox[0][0], reg_bbox[1][1] - reg_bbox[0][1]]
-
-        saved_img_loc = os.path.join(reg_loc, f"temp-{species}.tiff")
-        padding = int(reg_bbox_wh[0] - img.shape[0]) // 2
-        img = np.pad(img, padding, mode="constant", constant_values=0)
-        reg_bbox = mims_image.registration_bbox
-        x_min, y_min = reg_bbox[0]
-        x_max, y_max = reg_bbox[1]
-        width, height = x_max - x_min, y_max - y_min
-        stored_transform = SimilarityTransform(matrix=np.array(mims_image.transform))
-        print(reg_bbox, stored_transform.translation / stored_transform.scale)
-        offset_transform = SimilarityTransform(
-            translation=(-x_min, -y_min), scale=1 / stored_transform.scale
-        )
-        composed_matrix = offset_transform.params @ stored_transform.params
-        full_transform = SimilarityTransform(
-            scale=1,
-            rotation=stored_transform.rotation,
-            translation=(
-                -x_min + stored_transform.translation[0] / stored_transform.scale,
-                -y_min + stored_transform.translation[1] / stored_transform.scale,
-            ),
-        )
-        print(
-            "full_transform",
-            full_transform.scale,
-            full_transform.rotation,
-            full_transform.translation,
-        )
-        print(full_transform([256, 256]))
-        img = warp(
-            img,
-            inverse_map=full_transform.inverse,
-            preserve_range=True,
-        )
-        print("img", img.shape, img.dtype, np.mean(img))
-        img = img.astype(np.uint16)
-        tifffile.imwrite(saved_img_loc, img)
-        unwarped_img = unwarp_image(tfm, em_reference_fn, saved_img_loc)
+        unwarped_img = unwarp_image(tfm, em_reference_fn, img)
         unwarped_img = Image.fromarray(unwarped_img)
-        unwarped_img_loc = os.path.join(reg_loc, f"unwarped-{species}.png")
+        unwarped_img_loc = os.path.join(reg_loc, f"unwarped-{isotope.name}.png")
         unwarped_img.save(unwarped_img_loc)
         tiff_image = MimsTiffImage(
             mims_image=mims_image,
             image=unwarped_img_loc,
-            name=species,
+            name=isotope.name,
+            registration_bbox=registration_bbox,
         )
+        
         tiff_image.save()
-        # os.remove(saved_img_loc)
-
-
+        os.remove(img)
+    # Create the 13C12C_ratio and 15N14N_ratio composites
+    c13 = next(
+        (name for name in possible_13c_names if name in isotopes),
+        None,
+    )
+    c12 = next(
+        (name for name in possible_12c_names if name in isotopes),
+        None,
+    )
+    n15 = next(
+        (name for name in possible_15n_names if name in isotopes),
+        None,
+    )
+    n14 = next(
+        (name for name in possible_14n_names if name in isotopes),
+        None,
+    )
+    if c13 and c12:
+        c13 = MimsTiffImage.objects.get(mims_image=mims_image, name=c13)
+        c12 = MimsTiffImage.objects.get(mims_image=mims_image, name=c12)
+        c13_img = Image.open(c13.image.path)
+        c12_img = Image.open(c12.image.path)
+        c13_img = c13_img.resize(c12_img.size)
+        c13_img = np.array(c13_img)
+        c12_img = np.array(c12_img)
+        c12[c12 == 0] = 1
+        species_summed = np.divide(c13, c12) * 10000
+    else:
+        None
 def unwarp_image(tfm_file, reference_image_fn, moving_image_fn):
     tfm = sitk.ReadTransform(tfm_file)
     reference_image = sitk.ReadImage(reference_image_fn)  # , sitk.sitkUInt16)

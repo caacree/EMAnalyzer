@@ -7,10 +7,13 @@ For more information on this file, see
 https://docs.djangoproject.com/en/5.0/howto/deployment/wsgi/
 """
 
+import faulthandler
+
 import os
 
 from django.core.wsgi import get_wsgi_application
 
+faulthandler.enable()
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "server.settings")
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 application = get_wsgi_application()

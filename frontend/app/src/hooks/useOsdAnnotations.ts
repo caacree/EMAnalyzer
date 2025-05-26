@@ -152,7 +152,6 @@ export function useOsdAnnotations({
       osdViewer.addHandler("canvas-click", e => {
         const imgPt = getImgPt(e);
         if (!imgPt) return;
-
         addPoint({
           id: uuidv4(),
           x: imgPt.x,

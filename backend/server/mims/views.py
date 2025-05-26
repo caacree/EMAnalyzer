@@ -16,6 +16,7 @@ from .tasks import (
     create_registration_images_task,
     preprocess_mims_image_set,
     register_images_task,
+    orient_viewset_task,
 )
 from mims.services.register import register_images
 from mims.services.orient_images import orient_viewset
@@ -23,14 +24,15 @@ import os
 from PIL import Image
 import numpy as np
 
-os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 import torch
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from pathlib import Path
 import cv2
 
-
+checkpoint = "/Users/chris/Documents/lab/emAnalysis/backend/segment-anything-2/checkpoints/sam2.1_hiera_large.pt"
+model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
+sam2_model = build_sam2(model_cfg, checkpoint, device="mps")
 predictors = {}
 
 
@@ -104,9 +106,8 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
         # Prepare predictors for each possible image_key and 'em'
         image_keys = isotopes + ["em"]
         em = np.array(Image.open(mims_image.canvas.images.first().file.path))
-        device = torch.device("mps")
-        checkpoint = "/Users/chris/Documents/lab/emAnalysis/backend/segment-anything-2/checkpoints/sam2_hiera_large.pt"
-        model_cfg = "sam2_hiera_l.yaml"
+        predictor = SAM2ImagePredictor(sam2_model)
+
         for image_key in image_keys:
             predictor_key = f"{pk}_{image_key}"
             if predictor_key not in predictors:
@@ -119,17 +120,12 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
                 if image.ndim == 2:  # If the image is grayscale
                     image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
 
-                predictor = SAM2ImagePredictor(
-                    build_sam2(model_cfg, checkpoint, device)
-                )
-
+                print(f"Setting image for {predictor_key}")
                 predictor.set_image(image)
                 predictors[predictor_key] = predictor
-        full_em_predictor = SAM2ImagePredictor(
-            build_sam2(model_cfg, checkpoint, device)
-        )
+        full_em_predictor = SAM2ImagePredictor(sam2_model)
         full_em_predictor.set_image(em)
-        # predictors[f"{pk}_em"] = full_em_predictor
+        predictors[f"{pk}_em"] = full_em_predictor
 
         return Response(status=status.HTTP_200_OK)
 
@@ -189,7 +185,6 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
         ]
 
         if predictor_key not in predictors:
-            print(f"Creating predictor for {predictor_key}")
             if image_key != "em":
                 image = image_from_im_file(mims_image.file.path, image_key, True)
             else:
@@ -199,13 +194,12 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
             # Convert image to 3 channels if it's single-channel
             if image.ndim == 2:  # If the image is grayscale
                 image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-            device = torch.device("mps")
 
-            checkpoint = "/Users/chris/Documents/lab/emAnalysis/backend/segment-anything-2/checkpoints/sam2_hiera_large.pt"
-            model_cfg = "sam2_hiera_l.yaml"
-            predictor = SAM2ImagePredictor(build_sam2(model_cfg, checkpoint, device))
-
+            predictor = SAM2ImagePredictor(sam2_model)
+            print(f"Creating predictor for {predictor_key}")
+            print(f"Setting image for {predictor_key}")
             predictor.set_image(image)
+            print(f"Setting predictor for {predictor_key}")
             predictors[predictor_key] = predictor
 
         predictor = predictors[predictor_key]
@@ -258,13 +252,9 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
                 json.dumps({"em_shapes": em_shapes, "mims_shapes": mims_shapes})
             )
 
-        # register_images_task.delay(mims_image.id)
-        # mid = "7ebc9b94-69d8-45f6-84e2-8af43350164b"
-
-        print("registering images")
-        register_images(mims_image.id, shrink_em=True)
-        # global predictors
-        # predictors = {}
+        register_images_task.delay(mims_image.id)
+        global predictors
+        predictors = {}
         return Response(
             {
                 "message": "Registration processing",
@@ -290,7 +280,7 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
         autocontrast = (
             request.query_params.get("autocontrast", "false").lower() == "true"
         )
-
+        binarize = request.query_params.get("binarize", "false").lower() == "true"
         if not species:
             return Response(
                 {"error": "species parameter is required"},
@@ -298,7 +288,9 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            image_data = image_from_im_file(mims_image.file.path, species, autocontrast)
+            image_data = image_from_im_file(
+                mims_image.file.path, species, autocontrast, binarize
+            )
             response = HttpResponse(content_type="image/png")
             Image.fromarray(image_data).save(response, format="PNG")
             return response
@@ -314,3 +306,79 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
         return Response(
             {"message": "MIMS image is outside the canvas"}, status=status.HTTP_200_OK
         )
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path=r"unwarped/(?P<tiff_id>[\w-]+)/(?P<filename>[\w\.-]+)",
+    )
+    def unwarped(self, request, pk=None, tiff_id=None, filename=None):
+        """Return a dewarped version of the MIMS image or EM image crop based on registration_bbox."""
+        mims_image = get_object_or_404(MIMSImage, pk=pk)
+
+        # Get the first MimsTiffImage with registration_bbox to determine dimensions
+        reference_tiff = mims_image.mims_tiff_images.filter(
+            registration_bbox__isnull=False
+        ).first()
+
+        if not reference_tiff or not reference_tiff.registration_bbox:
+            return Response(
+                {"error": "No registration bbox found for this image"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get registration_bbox dimensions
+        bbox = reference_tiff.registration_bbox
+        # Assuming bbox is in format [[top_left_x, top_left_y], [bottom_right_x, bottom_right_y]]
+        width = bbox[1][0] - bbox[0][0]
+        height = bbox[1][1] - bbox[0][1]
+
+        # Determine the output size based on the registration_bbox
+        output_size = (int(width), int(height))
+
+        if tiff_id == "EM":
+            # For EM, crop the canvas image based on the registration_bbox
+            em_image = mims_image.image_set.canvas.images.first()
+            if not em_image:
+                return Response(
+                    {"error": "No EM image found for this canvas"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            # Open the EM image
+            em_img = Image.open(em_image.file.path)
+
+            # Crop the EM image to the registration_bbox
+            cropped_em = em_img.crop(
+                (
+                    int(bbox[0][0]),
+                    int(bbox[0][1]),  # left, upper
+                    int(bbox[1][0]),
+                    int(bbox[1][1]),  # right, lower
+                )
+            )
+
+            # Return the cropped EM image
+            response = HttpResponse(content_type="image/png")
+            cropped_em.save(response, format="PNG")
+            return response
+        else:
+            # For MIMS images, find the corresponding MimsTiffImage
+            tiff_image = mims_image.mims_tiff_images.filter(id=tiff_id).first()
+
+            if not tiff_image:
+                return Response(
+                    {"error": f"Tiff image with ID {tiff_id} not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            # Open the tiff image
+            tiff_img = Image.open(tiff_image.image.path)
+
+            # Resize the image to match the registration_bbox dimensions
+            resized_img = tiff_img.resize(output_size, Image.LANCZOS)
+
+            # Return the resized image
+            response = HttpResponse(content_type="image/png")
+            resized_img.save(response, format="PNG")
+            return response

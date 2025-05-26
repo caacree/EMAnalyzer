@@ -5,14 +5,14 @@ from django.conf import settings
 import SimpleITK as sitk
 from django.shortcuts import get_object_or_404
 from mims.services.register import register_images
-from mims.services.orient_images import largest_inner_square
+from mims.services.orient_images import largest_inner_square, orient_viewset
 from mims.services.registration_utils import (
     create_registration_images,
 )
 from mims.model_utils import (
     get_concatenated_image,
 )
-from mims.models import Isotope, MIMSAlignment, MIMSImage
+from mims.models import Isotope, MIMSAlignment, MIMSImage, MIMSImageSet
 from skimage import exposure
 import sims
 import os
@@ -45,7 +45,12 @@ def preprocess_mims_image_set(mims_image_set_id):
     for mims_image in mims_image_set.mims_images.all():
         short_name = mims_image.file.name.split("/")[-1]
         print(f"Processing image {short_name}")
-        mims = sims.SIMS(mims_image.file.path)
+        try:
+            mims = sims.SIMS(mims_image.file.path)
+        except:
+            print(f"Error processing image {short_name}")
+            mims_image.delete()
+            continue
         is_valid_file = (
             mims and (mims.data is not None) and (mims.data.species is not None)
         )
@@ -243,6 +248,12 @@ def make_unwarp_transform_task(mims_image_obj_id):
 
 
 @shared_task
+def orient_viewset_task(mims_image_set_obj_id, viewset_points, isotope):
+    mims_image_set = get_object_or_404(MIMSImageSet, pk=mims_image_set_obj_id)
+    orient_viewset(mims_image_set, viewset_points, isotope)
+
+
+@shared_task
 def create_registration_images_task(mims_image_obj_id):
     mims_image = get_object_or_404(MIMSImage, pk=mims_image_obj_id)
     create_registration_images(mims_image)
@@ -252,4 +263,4 @@ def create_registration_images_task(mims_image_obj_id):
 
 @shared_task
 def register_images_task(mims_image_obj_id):
-    register_images(mims_image_obj_id)
+    register_images(mims_image_obj_id, shrink_em=True)

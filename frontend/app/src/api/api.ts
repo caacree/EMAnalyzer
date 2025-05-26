@@ -41,4 +41,9 @@ export const postImageSetPoints = async (imageSetId: string, points: any, isotop
   return api.post(`mims_image_set/${imageSetId}/submit_viewset_alignment_points/`, {points, isotope});
 }
 
+export const get_mims_image_dewarped_url = (mimsImage: any, tiffImage: any) => {
+  const mimsName = mimsImage.name || mimsImage.file.split('/').pop().split('.')[0];
+  return `http://localhost:8000/api/mims_image/${mimsImage.id}/unwarped/${tiffImage.id}/${mimsName}_${tiffImage.name.replace(/ /g,'')}.png/`;
+}
+
 export default api;

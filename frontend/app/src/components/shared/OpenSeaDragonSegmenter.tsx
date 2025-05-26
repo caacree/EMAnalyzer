@@ -19,7 +19,7 @@ const OpenSeaDragonSegmenter = ({
   const { mimsImageId } = useParams({ strict: false });
 
   const [isInclude, setIsInclude] = React.useState<boolean>(true);
-  const [mode, setMode] = useState<"shapes" | "draw" | "navigate">("draw");
+  const [mode, setMode] = useState<"shapes" | "draw" | "navigate">("shapes");
   const [brushSize, setBrushSize] = React.useState(10);
 
   // -- Keydown event handler, extended for "brush_stroke" overlays --

@@ -9,6 +9,7 @@ import { useMimsViewer } from "@/stores/mimsViewer";
 import OpenSeaDragonSegmenter from "@/components/shared/OpenSeaDragonSegmenter";
 import { usePrepareCanvasForGuiQuery } from "@/queries/queries";
 import { cn } from "@/lib/utils";
+import DetailAligned from "./DetailAligned";
 
 const fetchMimsImageDetail = async (id: string) => {
   const res = await api.get(`mims_image/${id}/`);
@@ -84,6 +85,13 @@ const MimsImage = () => {
   if (!mimsImage) {
     return <div>Loading...</div>;
   }
+  
+  if (mimsImage.status === "DEWARPED_ALIGNED") {
+    return <DetailAligned />
+  }
+  console.log(canvasStore.overlays.filter(p => p.data?.polygon?.length > 3).map((o: any) => o.data?.polygon.map((p: any) => p.slice(0, 2)).filter((p: any) => p)).length,
+  mimsStore.overlays.map((o: any) => o.data?.polygon.map((p: any) => p.slice(0, 2)).filter((p: any) => p)).length)
+  
   return (
     <div className="flex flex-col w-full m-4 mb-5">
       <div className="flex gap-8">
@@ -120,7 +128,13 @@ const MimsImage = () => {
                 ))}
               </TabsList>
             {mimsImage?.isotopes?.map((isotope: any) => {
-              const url = `http://localhost:8000/api/mims_image/${mimsImage.id}/image.png?species=${isotope.name}&autocontrast=true`
+              const isAu = isotope.name == "197Au";
+              let url = `http://localhost:8000/api/mims_image/${mimsImage.id}/image.png?species=${isotope.name}`
+              if (isAu) {
+                url += "&binarize=true"
+              } else {
+                url += "&autocontrast=true"
+              }
               const isActive = selectedIsotope === isotope.name;
               return (
                 <TabsContent key={isotope.name} value={isotope.name}  className={cn("flex flex-col", isActive ? "grow" : "hidden")}>

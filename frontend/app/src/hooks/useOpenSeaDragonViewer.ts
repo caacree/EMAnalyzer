@@ -39,7 +39,6 @@ export function useOpenSeadragonViewer({
 
   // Create or re-create the viewer
   useEffect(() => {
-    console.log(viewerRef.current, iiifContent, url);
     if (!viewerRef.current || (!iiifContent && !url)) return;
 
     // Destroy any existing
@@ -122,8 +121,8 @@ export function useOpenSeadragonViewer({
         const tiledImage = viewer.world.getItemAt(0);
         if (!tiledImage) return;
         if (coordinates && coordinates.length > 1) {
-          const tl = {x: coordinates[0].x, y: coordinates[0].y};
-          const br = {x: coordinates[1].x, y: coordinates[1].y};
+          const tl = {x:  coordinates[0].x?.[0] || coordinates[0].x, y: coordinates[0].y?.[0] || coordinates[0].y};
+          const br = {x: coordinates[1].x?.[0] || coordinates[1].x, y: coordinates[1].y?.[0] || coordinates[1].y};
           if (flip) {
             tl.x = tiledImage.getContentSize().x - tl.x;
             br.x = tiledImage.getContentSize().x - br.x;
@@ -166,7 +165,7 @@ export function useOpenSeadragonViewer({
         osdViewerRef.current.destroy();
       }
     };
-  }, [iiifContent, url, viewerRef.current]);
+  }, [iiifContent, url, viewerRef.current, coordinates, coordinates?.[0]?.x]);
 
   useEffect(() => {
     const viewer = osdViewerRef.current as any;
