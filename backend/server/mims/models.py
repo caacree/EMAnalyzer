@@ -4,6 +4,7 @@ import os
 import shutil
 from mims.model_utils import get_concatenated_image
 from django.conf import settings
+import numpy as np
 
 
 def get_mims_image_upload_path(instance, filename):
@@ -71,6 +72,9 @@ class MIMSImage(CanvasObj):
     file = models.FileField(upload_to=get_mims_image_upload_path)
     isotopes = models.ManyToManyField(Isotope)
 
+    affine_tform = models.JSONField(null=True, blank=True)
+    reg_points = models.JSONField(null=True, blank=True)
+
     def __str__(self):
         filename = self.name if self.name else self.file.name.split("/")[-1]
         return f"{self.canvas.name} - {filename}"
@@ -84,6 +88,29 @@ class MIMSImage(CanvasObj):
         if self.file:
             os.remove(self.file.path)
         super().delete(*args, **kwargs)
+
+    def get_affine_matrix(self):
+        """
+        Returns the cached 3 × 3 affine as a NumPy array, or None
+        if the field hasn’t been populated yet.
+        """
+        if not self.affine_tform:
+            return None  # not calculated yet
+
+        mat = np.asarray(self.affine_tform, dtype=float)
+
+        if mat.size == 9:  # flattened 3×3
+            return mat.reshape(3, 3)
+        elif mat.shape == (3, 3):  # already nested
+            return mat
+        elif mat.size == 6:  # 2×3 (skimage-style)
+            return np.vstack([mat.reshape(2, 3), [0, 0, 1]])
+        else:
+            raise ValueError(f"Unexpected affine_tform shape: {mat.shape}")
+
+    def get_landmarks(self, space="em"):
+        pts = self.reg_points[space]  # 'em' or 'mims'
+        return np.asarray(pts, float)
 
 
 class MimsTiffImage(AbstractBaseModel):

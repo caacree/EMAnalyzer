@@ -234,6 +234,8 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
 
         em_shapes = request.data.get("em_shapes")
         mims_shapes = request.data.get("mims_shapes")
+        em_points = request.data.get("em_points")
+        mims_points = request.data.get("mims_points")
         if (
             len(em_shapes) == 0
             or len(mims_shapes) == 0
@@ -249,7 +251,14 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
         os.makedirs(reg_loc, exist_ok=True)
         with open(os.path.join(reg_loc, "reg_shapes.json"), "w") as shapes_file:
             shapes_file.write(
-                json.dumps({"em_shapes": em_shapes, "mims_shapes": mims_shapes})
+                json.dumps(
+                    {
+                        "em_shapes": em_shapes,
+                        "mims_shapes": mims_shapes,
+                        "em_points": em_points,
+                        "mims_points": mims_points,
+                    }
+                )
             )
 
         register_images_task.delay(mims_image.id)

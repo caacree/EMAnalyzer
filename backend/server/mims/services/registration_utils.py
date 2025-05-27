@@ -10,6 +10,16 @@ from scipy.spatial import ConvexHull
 from mims.model_utils import get_autocontrast_image_path
 
 
+def polygon_centroid(polygon):
+    try:
+        poly_array = np.array(polygon, dtype=float)
+        if poly_array.ndim != 2 or poly_array.shape[1] < 2:
+            raise ValueError("Polygon must be an NxK array with K >= 2.")
+        return np.mean(poly_array[:, :2], axis=0)
+    except Exception as e:
+        raise ValueError(f"Invalid data during centroid calculation: {e}")
+
+
 def get_rotated_dimensions(width, height, transform_params):
     # Extract the rotation angle in radians from the transform
     theta = transform_params.rotation
@@ -210,3 +220,65 @@ def create_registration_images(mims_image, masks=None):
     Image.fromarray(em_image_transformed).save(
         os.path.join(save_reg_loc, f"em{'_final' if masks else ''}.png")
     )
+
+
+# ---------------------------------------------------------------------
+# ---------- 1.  Landmark helpers -------------------------------------
+# ---------------------------------------------------------------------
+def radial_spokes(shape: np.ndarray, n_spokes: int = 6) -> np.ndarray:
+    """
+    Return the  `n_spokes`  vertices that lie furthest from the centroid
+    in n evenly spaced angular directions (0-360°).
+    """
+    c = polygon_centroid(shape)
+    rel = shape - c
+    angles = np.linspace(0, 2 * np.pi, n_spokes, endpoint=False)
+    v = np.stack([np.cos(angles), np.sin(angles)], axis=1)  # (n,2)
+
+    # project every vertex onto each spoke direction, pick the farthest
+    proj = rel @ v.T  # (Nv, n_spokes)
+    idx = np.argmax(proj, axis=0)  # indices of farthest vertices
+    return shape[idx]  # (n_spokes, 2)
+
+
+def assemble_landmarks(json_shapes: dict, needs_flip: bool, w_mims: int):
+    """
+    Build matched EM ↔ MIMS landmark arrays of shape (N,2)
+    consisting of:
+      • polygon centroids
+      • 6-spoke extreme vertices per polygon
+      • extra *_points supplied in the JSON
+    """
+    em_shapes = [np.asarray(s, float) for s in json_shapes.get("em_shapes", [])]
+    mims_shapes = [np.asarray(s, float) for s in json_shapes.get("mims_shapes", [])]
+
+    extra_em_pts = np.asarray(json_shapes.get("em_points", []), float)
+    extra_mims_pts = np.asarray(json_shapes.get("mims_points", []), float)
+
+    if needs_flip:
+        # horizontal flip in MIMS space
+        mims_shapes = [
+            np.column_stack([(w_mims - 1) - s[:, 0], s[:, 1]]) for s in mims_shapes
+        ]
+        extra_mims_pts = [
+            np.column_stack([(w_mims - 1) - s[0], s[1]]) for s in mims_pts
+        ]
+
+    if len(em_shapes) != len(mims_shapes):
+        raise ValueError("em_shapes and mims_shapes lengths differ.")
+
+    em_pts, mims_pts = [], []
+    for em, mi in zip(em_shapes, mims_shapes):
+        em_pts.append(polygon_centroid(em))
+        mims_pts.append(polygon_centroid(mi))
+        em_pts.extend(radial_spokes(em))
+        mims_pts.extend(radial_spokes(mi))
+
+    em_pts.extend(extra_em_pts)
+    mims_pts.extend(extra_mims_pts)
+
+    em_pts = np.asarray(em_pts, float)
+    mims_pts = np.asarray(mims_pts, float)
+    if em_pts.shape != mims_pts.shape:
+        raise ValueError("Landmark count mismatch after aggregation.")
+    return em_pts, mims_pts
