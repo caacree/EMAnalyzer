@@ -11,6 +11,10 @@ def get_mims_image_upload_path(instance, filename):
     return f"mims_image_sets/{instance.image_set.id}/mims_images/{filename}"
 
 
+def get_mims_tiff_image_upload_path(instance, filename):
+    return f"mims_image_sets/{instance.mims_image.image_set.id}/mims_images/final/{filename}"
+
+
 class Isotope(AbstractBaseModel):
     name = models.CharField(max_length=50, unique=True)
 
@@ -72,9 +76,6 @@ class MIMSImage(CanvasObj):
     file = models.FileField(upload_to=get_mims_image_upload_path)
     isotopes = models.ManyToManyField(Isotope)
 
-    affine_tform = models.JSONField(null=True, blank=True)
-    reg_points = models.JSONField(null=True, blank=True)
-
     def __str__(self):
         filename = self.name if self.name else self.file.name.split("/")[-1]
         return f"{self.canvas.name} - {filename}"
@@ -117,7 +118,7 @@ class MimsTiffImage(AbstractBaseModel):
     mims_image = models.ForeignKey(
         MIMSImage, on_delete=models.CASCADE, related_name="mims_tiff_images"
     )
-    image = models.FileField(upload_to=get_mims_image_upload_path)
+    image = models.FileField(upload_to=get_mims_tiff_image_upload_path)
     name = models.CharField(max_length=50, default="")
     registration_bbox = models.JSONField(null=True, blank=True)
 

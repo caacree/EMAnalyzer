@@ -156,8 +156,8 @@ export function useOsdAnnotations({
           id: uuidv4(),
           x: imgPt.x,
           y: imgPt.y,
-          type: pointSelectionMode,
-          color: pointSelectionMode === "include" ? "green" : "red"
+          type: mode === "points" ? "pending" : pointSelectionMode,
+          color: (pointSelectionMode === "include" && mode === "shapes") ? "green" : "red"
         });
       });
       // Prevent default keyboard drag

@@ -236,10 +236,12 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
         mims_shapes = request.data.get("mims_shapes")
         em_points = request.data.get("em_points")
         mims_points = request.data.get("mims_points")
+        total_em_points = len(em_points) + len(em_shapes)
+        total_mims_points = len(mims_points) + len(mims_shapes)
         if (
-            len(em_shapes) == 0
-            or len(mims_shapes) == 0
-            or len(em_shapes) != len(mims_shapes)
+            total_em_points == 0
+            or total_mims_points == 0
+            or total_em_points != total_mims_points
         ):
             return Response(
                 {"message": "MIMS image is not ready for registration"},
@@ -247,7 +249,7 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
             )
 
         mims_path = Path(mims_image.file.path)
-        reg_loc = os.path.join(mims_path.parent, mims_path.stem, "registration")
+        """reg_loc = os.path.join(mims_path.parent, mims_path.stem, "registration")
         os.makedirs(reg_loc, exist_ok=True)
         with open(os.path.join(reg_loc, "reg_shapes.json"), "w") as shapes_file:
             shapes_file.write(
@@ -260,7 +262,7 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
                     }
                 )
             )
-
+        """
         register_images_task.delay(mims_image.id)
         global predictors
         predictors = {}
@@ -280,6 +282,15 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
         return Response(
             {"message": "MIMS image reset successfully"}, status=status.HTTP_200_OK
         )
+
+    @action(detail=True, methods=["get"])
+    def existing_registration_data(self, request, pk=None):
+        mims_image = get_object_or_404(MIMSImage, pk=pk)
+        mims_path = Path(mims_image.file.path)
+        reg_loc = os.path.join(mims_path.parent, mims_path.stem, "registration")
+        with open(os.path.join(reg_loc, "reg_shapes.json"), "r") as shapes_file:
+            reg_data = json.load(shapes_file)
+            return Response(reg_data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"], url_path="image.png")
     def image_png(self, request, pk=None):
@@ -310,7 +321,6 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
     def outside_canvas(self, request, pk=None):
         mims_image = get_object_or_404(MIMSImage, pk=pk)
         mims_image.status = "OUTSIDE_CANVAS"
-        # mims_image.alignments.all().delete()
         mims_image.save()
         return Response(
             {"message": "MIMS image is outside the canvas"}, status=status.HTTP_200_OK

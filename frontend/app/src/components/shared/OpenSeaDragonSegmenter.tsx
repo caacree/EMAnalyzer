@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import api from "../../api/api";
 import { useParams } from "@tanstack/react-router";
 import ControlledOpenSeaDragon from "./ControlledOpenSeaDragon";
-import { Pencil, MousePointer, Hexagon } from "lucide-react";
+import { Pencil, MousePointer, Hexagon, Target } from "lucide-react";
 import { IconTooltip } from "./ui/tooltip";
 import { v4 as uuidv4 } from 'uuid';
 const OpenSeaDragonSegmenter = ({
@@ -19,7 +19,7 @@ const OpenSeaDragonSegmenter = ({
   const { mimsImageId } = useParams({ strict: false });
 
   const [isInclude, setIsInclude] = React.useState<boolean>(true);
-  const [mode, setMode] = useState<"shapes" | "draw" | "navigate">("shapes");
+  const [mode, setMode] = useState<"shapes" | "draw" | "navigate" | "points">("shapes");
   const [brushSize, setBrushSize] = React.useState(10);
 
   // -- Keydown event handler, extended for "brush_stroke" overlays --
@@ -46,7 +46,10 @@ const OpenSeaDragonSegmenter = ({
       else if (e.key === " ") {
         // Prevent default spacebar scrolling
         e.preventDefault();
-        canvasStore.clearPoints();
+        console.log(mode, canvasStore.points);
+        if (mode === "shapes") {
+          canvasStore.clearPoints();
+        }
 
         // 1) Confirm any "suggestion" shape (existing logic)
         const shape = canvasStore.overlays.find((p: any) => p.type === "suggestion");
@@ -71,9 +74,22 @@ const OpenSeaDragonSegmenter = ({
             type: "shape_confirmed"
           });
         });
+
+        // 3) Confirm all points => convert to polygons, color them green
+        const points = canvasStore.points.filter((p: any) => p.type === "pending");
+        points.forEach((point: any) => {
+          canvasStore.removePoint(point.id);
+          canvasStore.addPoint({
+            id: uuidv4(),
+            x: point.x,
+            y: point.y,
+            color: "green",
+            type: "point_confirmed"
+          });
+        });
       }
     };
-    if (mode === "shapes" || mode === "draw") {
+    if (mode === "shapes" || mode === "draw" || mode === "points") {
       window.addEventListener("keydown", handleKeyDown);
     }
     return () => {
@@ -83,9 +99,10 @@ const OpenSeaDragonSegmenter = ({
 
   // -- If the user sets points (include/exclude clicks), call segmentation API --
   useEffect(() => {
-    if (canvasStore.points.length === 0) return;
-    const point_coords = canvasStore.points.map((point: any) => [point.x, point.y]);
-    const point_labels = canvasStore.points.map((point: any) =>
+    const shapePoints = canvasStore.points;
+    if (mode !== "shapes" || shapePoints.length === 0) return;
+    const point_coords = shapePoints.map((point: any) => [point.x, point.y]);
+    const point_labels = shapePoints.map((point: any) =>
       point.type === "include" ? 1 : 0
     );
 
@@ -121,6 +138,9 @@ const OpenSeaDragonSegmenter = ({
         <div className="flex bg-gray-100 rounded-md p-1 space-x-2">
           <IconTooltip content="Shape Selection Mode" isActive={mode === "shapes"} onClick={() => setMode("shapes")}>
             <Hexagon size={20} />
+          </IconTooltip>
+          <IconTooltip content="Point Selection Mode" isActive={mode === "points"} onClick={() => setMode("points")}>
+            <Target size={20} />
           </IconTooltip>
           <IconTooltip content="Draw Mode" isActive={mode === "draw"} onClick={() => setMode("draw")}>
             <Pencil size={20} />

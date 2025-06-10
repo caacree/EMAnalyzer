@@ -25,7 +25,7 @@ import numpy as np
 from pystackreg import StackReg
 from pystackreg.util import to_uint16
 import pyvips
-from mims.services import create_alignment_estimates, make_unwarp_transform
+from mims.services import create_alignment_estimates
 
 
 @shared_task
@@ -238,16 +238,6 @@ def estimate_mims_alignment(mims_image_id):
 
 
 @shared_task
-def make_unwarp_transform_task(mims_image_obj_id):
-    mims_image = get_object_or_404(MIMSImage, pk=mims_image_obj_id)
-    mims_image.status = "DEWARPING"
-    mims_image.save()
-    make_unwarp_transform(mims_image)
-    mims_image.status = "DEWARPED_ALIGNED"
-    mims_image.save()
-
-
-@shared_task
 def orient_viewset_task(mims_image_set_obj_id, viewset_points, isotope):
     mims_image_set = get_object_or_404(MIMSImageSet, pk=mims_image_set_obj_id)
     orient_viewset(mims_image_set, viewset_points, isotope)
@@ -263,4 +253,4 @@ def create_registration_images_task(mims_image_obj_id):
 
 @shared_task
 def register_images_task(mims_image_obj_id):
-    register_images(mims_image_obj_id, shrink_em=True)
+    register_images(mims_image_obj_id)

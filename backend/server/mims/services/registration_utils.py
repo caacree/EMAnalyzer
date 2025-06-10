@@ -20,110 +20,9 @@ def polygon_centroid(polygon):
         raise ValueError(f"Invalid data during centroid calculation: {e}")
 
 
-def get_rotated_dimensions(width, height, transform_params):
-    # Extract the rotation angle in radians from the transform
-    theta = transform_params.rotation
-
-    # Compute the new dimensions needed to contain the rotated image.
-    new_width = math.ceil(abs(width * math.cos(theta)) + abs(height * math.sin(theta)))
-    new_height = math.ceil(abs(width * math.sin(theta)) + abs(height * math.cos(theta)))
-
-    return new_width, new_height
-
-
-def create_composite_mask(em_mask, mims_mask):
-    # Ensure the masks are binary (0 and 1)
-    em_mask_bin = em_mask > 0
-    mims_mask_bin = mims_mask > 0
-
-    # Create RGB channels for the masks
-    height, width = em_mask.shape
-    composite_image = np.zeros((height, width, 3), dtype=np.uint8)
-
-    # Cyan (0, 255, 255) for em_mask
-    composite_image[em_mask_bin] = [0, 255, 255]
-
-    # Magenta (255, 0, 255) for mims_mask
-    magenta_mask = np.zeros_like(composite_image)
-    magenta_mask[mims_mask_bin] = [255, 0, 255]
-
-    # Blend the two masks with 50% opacity
-    alpha = 0.5
-    composite_image = (composite_image * alpha + magenta_mask * alpha).astype(np.uint8)
-
-    return composite_image
-
-
-def find_positive_points(mask):
-    """Return the coordinates of all positive points (1s) in a binary mask."""
-    points = np.argwhere(mask > 0)
-    return points
-
-
-def compute_distance(point1, point2):
+def pts_distance(point1, point2):
     """Compute the Euclidean distance between two points."""
     return np.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2)
-
-
-def furthest_distance_convex_hull(mask):
-    """Find the furthest distance between any two positive points using convex hull."""
-    points = find_positive_points(mask)
-
-    if len(points) < 2:
-        return 0  # No meaningful distance if fewer than 2 points
-
-    # Find the convex hull
-    hull = ConvexHull(points)
-    hull_points = points[hull.vertices]
-
-    # Compute the maximum distance between any two points on the convex hull
-    max_distance = 0
-    num_hull_points = len(hull_points)
-
-    for i in range(num_hull_points):
-        for j in range(i + 1, num_hull_points):
-            distance = compute_distance(hull_points[i], hull_points[j])
-            max_distance = max(max_distance, distance)
-
-    return max_distance
-
-
-def test_mask_iou(mask1, mask2, padding=None):
-    if (
-        padding is None
-        or (mask1.shape[0] < mask2.shape[0])
-        or (mask1.shape[1] < mask2.shape[1])
-    ):
-        padding = max(mask2.shape[0], mask2.shape[1])
-    mask1_padded = np.pad(mask1, padding)
-    _, _, _, max_loc = cv2.minMaxLoc(
-        cv2.matchTemplate(mask1_padded, mask2, cv2.TM_CCOEFF_NORMED)
-    )
-    max_loc = (max_loc[0] - padding, max_loc[1] - padding)
-    mask1_y_start = padding + max_loc[1]
-    mask1_y_end = mask1_y_start + mask2.shape[0]
-    mask1_x_start = padding + max_loc[0]
-    mask1_x_end = mask1_x_start + mask2.shape[1]
-
-    mask1_translated = mask1_padded[
-        mask1_y_start:mask1_y_end, mask1_x_start:mask1_x_end
-    ]
-    return iou(mask1_translated, mask2), max_loc
-
-
-def scale_between_masks(mask1, mask2, by_width=False):
-    # Compute distances between corresponding points
-    dist_mask1 = furthest_distance_convex_hull(mask1)
-    dist_mask2 = furthest_distance_convex_hull(mask2)
-    if dist_mask2:
-        return dist_mask1 / dist_mask2
-    return 1
-
-
-def iou(mask1, mask2):
-    intersection = np.logical_and(mask1, mask2)
-    union = np.logical_or(mask1, mask2)
-    return np.sum(intersection) / np.sum(union)
 
 
 def mask_to_polygon(mask, translate=[0, 0]):
@@ -222,9 +121,6 @@ def create_registration_images(mims_image, masks=None):
     )
 
 
-# ---------------------------------------------------------------------
-# ---------- 1.  Landmark helpers -------------------------------------
-# ---------------------------------------------------------------------
 def radial_spokes(shape: np.ndarray, n_spokes: int = 6) -> np.ndarray:
     """
     Return the  `n_spokes`  vertices that lie furthest from the centroid
@@ -239,46 +135,3 @@ def radial_spokes(shape: np.ndarray, n_spokes: int = 6) -> np.ndarray:
     proj = rel @ v.T  # (Nv, n_spokes)
     idx = np.argmax(proj, axis=0)  # indices of farthest vertices
     return shape[idx]  # (n_spokes, 2)
-
-
-def assemble_landmarks(json_shapes: dict, needs_flip: bool, w_mims: int):
-    """
-    Build matched EM ↔ MIMS landmark arrays of shape (N,2)
-    consisting of:
-      • polygon centroids
-      • 6-spoke extreme vertices per polygon
-      • extra *_points supplied in the JSON
-    """
-    em_shapes = [np.asarray(s, float) for s in json_shapes.get("em_shapes", [])]
-    mims_shapes = [np.asarray(s, float) for s in json_shapes.get("mims_shapes", [])]
-
-    extra_em_pts = np.asarray(json_shapes.get("em_points", []), float)
-    extra_mims_pts = np.asarray(json_shapes.get("mims_points", []), float)
-
-    if needs_flip:
-        # horizontal flip in MIMS space
-        mims_shapes = [
-            np.column_stack([(w_mims - 1) - s[:, 0], s[:, 1]]) for s in mims_shapes
-        ]
-        extra_mims_pts = [
-            np.column_stack([(w_mims - 1) - s[0], s[1]]) for s in mims_pts
-        ]
-
-    if len(em_shapes) != len(mims_shapes):
-        raise ValueError("em_shapes and mims_shapes lengths differ.")
-
-    em_pts, mims_pts = [], []
-    for em, mi in zip(em_shapes, mims_shapes):
-        em_pts.append(polygon_centroid(em))
-        mims_pts.append(polygon_centroid(mi))
-        em_pts.extend(radial_spokes(em))
-        mims_pts.extend(radial_spokes(mi))
-
-    em_pts.extend(extra_em_pts)
-    mims_pts.extend(extra_mims_pts)
-
-    em_pts = np.asarray(em_pts, float)
-    mims_pts = np.asarray(mims_pts, float)
-    if em_pts.shape != mims_pts.shape:
-        raise ValueError("Landmark count mismatch after aggregation.")
-    return em_pts, mims_pts

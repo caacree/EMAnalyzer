@@ -9,13 +9,14 @@ import { useMimsViewer } from "@/stores/mimsViewer";
 import ControlledOpenSeaDragon from "@/components/shared/ControlledOpenSeaDragon";
 import { usePrepareCanvasForGuiQuery } from "@/queries/queries";
 import { cn } from "@/lib/utils";
+import CreateRatioImage from "./CreateRatioImage";
 
 const fetchMimsImageDetail = async (id: string) => {
   const res = await api.get(`mims_image/${id}/`);
   return res.data;
 };
 
-const DetailAligned = () => {
+const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolean, setIsRegistering: (isRegistering: boolean) => void}) => {
   const canvasStore = useCanvasViewer();
   const mimsStore = useMimsViewer();
   const { setCoordinates: setEmCoordinates } = canvasStore;
@@ -23,6 +24,7 @@ const DetailAligned = () => {
   const [openseadragonOptions, setOpenseadragonOptions] = useState<any>({defaultZoomLevel: 1});
   const [selectedIsotope, setSelectedIsotope] = useState("EM");
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isRatioDialogOpen, setIsRatioDialogOpen] = useState(false);
 
   const { mimsImageId } = useParams({ strict: false });
 
@@ -149,6 +151,24 @@ const DetailAligned = () => {
                   {tiffImage.name}
                 </TabsTrigger>
               ))}
+              <button 
+                onClick={(e) => {
+                  e.preventDefault();
+                  setIsRatioDialogOpen(true);
+                }}
+                className="px-3 py-1 rounded border-2 border-green-500 text-green-500 hover:bg-green-500 hover:text-white ml-2"
+              >
+                Add Ratio Image
+              </button>
+              <button 
+                onClick={(e) => {
+                  e.preventDefault();
+                  setIsRegistering(!isRegistering);
+                }}
+                className="px-3 py-1 rounded border-2 border-purple-500 text-purple-500 hover:bg-purple-500 hover:text-white ml-2"
+              >
+                {isRegistering ? "Stop Registering" : "Adjust Registration"}
+              </button>
             </TabsList>
             <TabsContent value="EM" className={cn("flex flex-col", selectedIsotope === "EM" ? "grow" : "hidden")}>
               <ControlledOpenSeaDragon 
@@ -159,7 +179,7 @@ const DetailAligned = () => {
             </TabsContent>
             {mimsImage?.mims_tiff_images?.map((tiffImage: any) => {
               const isActive = selectedIsotope === tiffImage.name;
-              const image = tiffImage.image.split("/media")[0] + "/media" + tiffImage.image.split("/media")[2];
+              const image = tiffImage.image;
               return (
                 <TabsContent key={tiffImage.id} value={tiffImage.name} className={cn("flex flex-col", isActive ? "grow" : "hidden")}>
                   <div className="min-h-[600px] flex flex-col grow">
@@ -175,7 +195,16 @@ const DetailAligned = () => {
           </Tabs>
         </div>
       </div>
+      {mimsImage && (
+      <CreateRatioImage 
+        open={isRatioDialogOpen}
+        onOpenChange={setIsRatioDialogOpen}
+        mimsImageId={mimsImageId as string}
+        tiffImages={mimsImage.mims_tiff_images || []}
+      />
+    )}
     </div>
+    
   );
 };
 

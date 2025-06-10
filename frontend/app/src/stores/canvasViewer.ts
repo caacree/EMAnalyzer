@@ -13,7 +13,7 @@ interface CanvasViewerState {
   setRotation: (rotation: number) => void
   setCoordinates: (coordinates: Point[]) => void
   addPoint: (point: Point) => void
-  removePoint: (index: number) => void
+  removePoint: (id: string) => void
   clearPoints: () => void
   addOverlay: (overlay: any) => void
   removeOverlay: (id: string) => void
@@ -37,8 +37,8 @@ export const useCanvasViewer = create<CanvasViewerState>((set) => ({
   addPoint: (point) => set((state) => ({ 
     points: [...state.points, point] 
   })),
-  removePoint: (index) => set((state) => ({
-    points: state.points.filter((_, i) => i !== index)
+  removePoint: (id: string) => set((state) => ({
+    points: state.points.filter((p) => p.id !== id)
   })),
   clearPoints: () => set({ points: [] }),
   
