@@ -73,7 +73,7 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
             >
                 {extractFileName(mimsImage.file)}
             </Link>
-            <button>{mimsImage.status}</button>
+            <button className="text-gray-900">{mimsImage.status}</button>
           </div>
         ))) : null}</div>
   );

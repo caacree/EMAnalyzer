@@ -33,8 +33,8 @@ const OpenSeaDragonSegmenter = ({
       else if (e.key === "r") {
         // "r" => reset all segment suggestions AND brush strokes
         setIsInclude(true);
-        canvasStore.clearPoints();
-
+        canvasStore.points.forEach((p: any) => (p.type !== "point_confirmed" ? canvasStore.removePoint(p.id) : null));
+        console.log
         // Remove suggestions
         const suggestions = canvasStore.overlays.filter((o: any) => o.type === "suggestion");
         suggestions.forEach((o: any) => canvasStore.removeOverlay(o.id));
@@ -46,10 +46,7 @@ const OpenSeaDragonSegmenter = ({
       else if (e.key === " ") {
         // Prevent default spacebar scrolling
         e.preventDefault();
-        console.log(mode, canvasStore.points);
-        if (mode === "shapes") {
-          canvasStore.clearPoints();
-        }
+        canvasStore.points.forEach((p: any) => (p.type !== "point_confirmed" ? canvasStore.removePoint(p.id) : null));
 
         // 1) Confirm any "suggestion" shape (existing logic)
         const shape = canvasStore.overlays.find((p: any) => p.type === "suggestion");
@@ -99,7 +96,7 @@ const OpenSeaDragonSegmenter = ({
 
   // -- If the user sets points (include/exclude clicks), call segmentation API --
   useEffect(() => {
-    const shapePoints = canvasStore.points;
+    const shapePoints = canvasStore.points.filter((p: any) => ["include", "exclude"].includes(p.type));
     if (mode !== "shapes" || shapePoints.length === 0) return;
     const point_coords = shapePoints.map((point: any) => [point.x, point.y]);
     const point_labels = shapePoints.map((point: any) =>

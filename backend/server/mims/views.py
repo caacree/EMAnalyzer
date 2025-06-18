@@ -249,7 +249,7 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
             )
 
         mims_path = Path(mims_image.file.path)
-        """reg_loc = os.path.join(mims_path.parent, mims_path.stem, "registration")
+        reg_loc = os.path.join(mims_path.parent, mims_path.stem, "registration")
         os.makedirs(reg_loc, exist_ok=True)
         with open(os.path.join(reg_loc, "reg_shapes.json"), "w") as shapes_file:
             shapes_file.write(
@@ -262,7 +262,7 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
                     }
                 )
             )
-        """
+
         register_images_task.delay(mims_image.id)
         global predictors
         predictors = {}
@@ -288,9 +288,12 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
         mims_image = get_object_or_404(MIMSImage, pk=pk)
         mims_path = Path(mims_image.file.path)
         reg_loc = os.path.join(mims_path.parent, mims_path.stem, "registration")
-        with open(os.path.join(reg_loc, "reg_shapes.json"), "r") as shapes_file:
-            reg_data = json.load(shapes_file)
-            return Response(reg_data, status=status.HTTP_200_OK)
+        if Path(os.path.join(reg_loc, "reg_shapes.json")).exists():
+            with open(os.path.join(reg_loc, "reg_shapes.json"), "r") as shapes_file:
+                reg_data = json.load(shapes_file)
+                return Response(reg_data, status=status.HTTP_200_OK)
+        else:
+            return Response(status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"], url_path="image.png")
     def image_png(self, request, pk=None):

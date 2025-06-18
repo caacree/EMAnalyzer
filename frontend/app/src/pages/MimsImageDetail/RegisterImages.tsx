@@ -40,14 +40,14 @@ const MimsImage = () => {
   });
   useEffect(() => {
     if (existingRegistrationData) {
-      existingRegistrationData.em_shapes.forEach((shape: any) => {
+      existingRegistrationData.em_shapes?.forEach((shape: any) => {
         canvasStore.addOverlay({
           type: "shape_confirmed",
           data: { polygon: shape },
           color: "green"
         });
       });
-      existingRegistrationData.mims_shapes.forEach((shape: any) => {
+      existingRegistrationData.mims_shapes?.forEach((shape: any) => {
         mimsStore.addOverlay({
           type: "shape_confirmed",
           data: { polygon: shape },
@@ -94,6 +94,17 @@ const MimsImage = () => {
   }
 
   const handleSubmit = () => {
+    /*mimsStore.points.forEach((p: any, i: number) => {
+      if (i > 34) {
+        mimsStore.removePoint(p.id);
+      }
+    })
+    canvasStore.points.forEach((p: any, i: number) => {
+      if (i > 34) {
+        canvasStore.removePoint(p.id);
+      }
+    })
+    return*/
     const data = {
       em_shapes: canvasStore.overlays.filter(p => p.data?.polygon?.length > 3).map((o: any) => o.data?.polygon.map((p: any) => p.slice(0, 2)).filter((p: any) => p)),
       mims_shapes: mimsStore.overlays.map((o: any) => o.data?.polygon.map((p: any) => p.slice(0, 2)).filter((p: any) => p)),
