@@ -51,7 +51,7 @@ const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolea
         // Assuming registration_bbox is in the format [[top_left_x, top_left_y], [bottom_right_x, bottom_right_y]]
         const em_bbox = [
           {x: bbox[0][0], y: bbox[0][1], id: "em_tl"}, 
-          {x: bbox[1][0], y: bbox[1][1], id: "em_br"}
+          {x: bbox[2][0], y: bbox[2][1], id: "em_br"}
         ];
         setEmCoordinates(em_bbox);
       }

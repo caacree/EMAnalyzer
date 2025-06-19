@@ -96,32 +96,11 @@ def get_points_transform(mims_imageviewset, mims_points, em_points):
         tform_no_flip, mims_points, em_points
     )
 
-    try:
-        # Use the associated MIMSImage within the viewset to get file path
-        mims_img_path = mims_imageviewset.mims_images.first().file.path
-        raw_mims_shape = image_from_im_file(
-            mims_img_path, "SE", autocontrast=False
-        ).shape
+    # Use the associated MIMSImage within the viewset to get file path
+    mims_img_path = mims_imageviewset.mims_images.first().file.path
+    raw_mims_shape = image_from_im_file(mims_img_path, "SE", autocontrast=False).shape
 
-        # Try loading bboxes, fallback to image width
-        try:
-            ims, bboxes = load_images_and_bboxes(mims_imageviewset, "SE", flip=True)
-            if not bboxes or not any(bboxes):
-                print(
-                    "Warning: No bounding boxes found for flip calc. Using image width."
-                )
-                max_x = raw_mims_shape[1]  # Use width
-            else:
-                max_x = np.max([pos[0] for bbox in bboxes if bbox for pos in bbox])
-        except Exception as e_bbox:
-            print(f"Warning: Error loading bboxes ({e_bbox}). Using image width.")
-            max_x = raw_mims_shape[1]  # Use width
-
-    except Exception as e_img:
-        print(f"ERROR: Cannot load MIMS image/shape for max_x calculation: {e_img}")
-        # Handle this error more gracefully, maybe raise it or use a default?
-        # For now, let's raise it to make it explicit.
-        raise ValueError(f"Failed to determine max_x for flip calculation: {e_img}")
+    max_x = raw_mims_shape[1] - 1  # Use width
 
     mims_points_flipped = mims_points.copy()
     mims_points_flipped[:, 0] = -mims_points_flipped[:, 0]

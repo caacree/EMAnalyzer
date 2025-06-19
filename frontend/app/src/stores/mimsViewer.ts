@@ -1,5 +1,6 @@
 import { CanvasOverlay } from '@/interfaces/CanvasOverlay'
 import { create } from 'zustand'
+import { v4 as uuidv4 } from 'uuid';
 
 interface Point {
   id: string
@@ -27,6 +28,8 @@ interface MimsViewerState {
   removeOverlay: (id: string) => void
   toggleOverlay: (id: string) => void
   clearOverlays: () => void
+  updateOverlayColor: (id: string, color: string) => void
+  updatePointColor: (id: string, color: string) => void
 }
 
 export const useMimsViewer = create<MimsViewerState>((set) => ({
@@ -51,19 +54,14 @@ export const useMimsViewer = create<MimsViewerState>((set) => ({
   clearPoints: () => set({ points: [] }),
   
   addOverlay: (overlay) => set((state) => {
-    const overlayDefaults = {
-      visible: true,
-      fill: true,
-      color: "red"
-    }
+    const overlayDefaults = { visible: true, fill: true, color: "red" };
     const newOverlay = {
+      // ← guarantee an id
+      id: overlay.id ?? uuidv4(),
       ...overlayDefaults,
       ...overlay,
-    }
-    const newOverlays = [...state.overlays, newOverlay];
-    return {
-      overlays: newOverlays
-    }
+    };
+    return { overlays: [...state.overlays, newOverlay] };
   }),
   removeOverlay: (id) => set((state) => ({
     overlays: state.overlays.filter(overlay => overlay.id !== id)
@@ -75,5 +73,18 @@ export const useMimsViewer = create<MimsViewerState>((set) => ({
         : overlay
     )
   })),
-  clearOverlays: () => set({ overlays: [] })
+  clearOverlays: () => set({ overlays: [] }),
+  updateOverlayColor: (id: string, color: string) =>
+    set(state => ({
+      overlays: state.overlays.map(o =>
+        o.id === id ? { ...o, color } : o
+      ),
+    })),
+  
+  updatePointColor: (id: string, color: string) =>
+    set(state => ({
+      points: state.points.map(p =>
+        p.id === id ? { ...p, color } : p
+      ),
+    })),
 }))

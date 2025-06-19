@@ -34,7 +34,6 @@ const OpenSeaDragonSegmenter = ({
         // "r" => reset all segment suggestions AND brush strokes
         setIsInclude(true);
         canvasStore.points.forEach((p: any) => (p.type !== "point_confirmed" ? canvasStore.removePoint(p.id) : null));
-        console.log
         // Remove suggestions
         const suggestions = canvasStore.overlays.filter((o: any) => o.type === "suggestion");
         suggestions.forEach((o: any) => canvasStore.removeOverlay(o.id));

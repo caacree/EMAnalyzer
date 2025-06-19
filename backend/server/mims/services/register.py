@@ -15,6 +15,7 @@ from scipy.interpolate import griddata
 from skimage.transform import ThinPlateSplineTransform, warp
 import numpy as np
 import math
+from PIL import Image
 import cv2
 import os
 from pathlib import Path
@@ -25,6 +26,11 @@ from mims.services.registration_utils import (
 from django.shortcuts import get_object_or_404
 from mims.models import MIMSImage
 import time
+from skimage.transform import SimilarityTransform
+
+
+def _as_int(v):
+    return int(v)
 
 
 def load_shapes(mims_image):
@@ -85,207 +91,161 @@ def get_mims_dims(mims_image):
     return img_mims.shape
 
 
+# ------------------------------------------------------------------
+def _flip_x(arr, max_x):
+    arr = np.asarray(arr, float).copy()
+    if arr.ndim == 1:
+        arr[0] = max_x - arr[0]
+    else:
+        arr[:, 0] = max_x - arr[:, 0]
+    return arr
+
+
+def _flip_x(arr, max_x):
+    arr = np.asarray(arr, float).copy()
+    if arr.ndim == 1:
+        arr[0] = max_x - arr[0]
+    else:
+        arr[:, 0] = max_x - arr[:, 0]
+    return arr
+
+
 def register_images(mims_image_obj_id):
+    """
+    1) Optional X-mirror of MIMS landmarks (same axis get_points_transform used)
+    2) Similarity affine             →  EM_pred
+    3) Median-offset tweak on translation
+    4) Thin-plate spline on residuals (EM_pred → EM_true)
+    5) Build inverse warp maps + canvas_bbox
+    6) Display diagnostic plots (TPS panel now uses skimage.transform.warp)
+    """
     start_time = time.time()
 
-    # --- Get MIMS Object and Paths ---
-    mims_image, em_shapes, mims_shapes, em_pts, mims_pts = validate_mims_image(
+    # ---------- 0. objects & basic geometry ------------------------
+    mims_img, em_shapes, mims_shapes, em_pts, mims_pts = validate_mims_image(
         mims_image_obj_id
     )
+    h_mims, w_mims = get_mims_dims(mims_img)
 
-    em_centroids = [polygon_centroid(ep) for ep in em_shapes]
-    mims_centroids = [polygon_centroid(mp) for mp in mims_shapes]
-    em_centroids.extend(em_pts)
-    mims_centroids.extend(mims_pts)
+    # ---------- 1. coarse similarity (with optional mirror) --------
+    em_cent = [polygon_centroid(e) for e in em_shapes] + em_pts
+    mims_cent = [polygon_centroid(m) for m in mims_shapes] + mims_pts
 
-    # --- Get Initial Transform ---
-    image_view_set = mims_image.image_set
-
-    selected_tform, needs_flip, _ = get_points_transform(
-        image_view_set, np.array(mims_centroids), np.array(em_centroids)
+    base_tf, needs_flip, max_x = get_points_transform(
+        mims_img.image_set,
+        np.asarray(mims_cent, float),
+        np.asarray(em_cent, float),
     )
-    h_mims, w_mims = get_mims_dims(mims_image)
 
-    # Do the flip transformation if needed
-    mims_image.flip = needs_flip
-    mims_image.save(update_fields=["flip"])
     if needs_flip:
-        mims_shapes_flipped = []
-        mims_pts_flipped = []
-        for mims_shape in mims_shapes:
-            mims_shapes_flipped.append(
-                [[(w_mims - 1) - pt[0], pt[1]] for pt in mims_shape]
-            )
-        for pt in mims_pts:
-            mims_pts_flipped.append([(w_mims - 1) - pt[0], pt[1]])
-        mims_shapes = mims_shapes_flipped
-        mims_pts = mims_pts_flipped
+        mims_shapes = [_flip_x(s, max_x) for s in mims_shapes]
+        mims_pts = [_flip_x(p, max_x) for p in mims_pts]
 
-    # Get the final pts to use for TPS
-    base_transform = selected_tform
+    # ---------- 2. landmark arrays after affine --------------------
+    mims_stack, em_stack = np.empty((0, 2)), np.empty((0, 2))
+    for mp, ep in zip(mims_shapes, em_shapes):
+        mims_stack = np.vstack([mims_stack, polygon_centroid(mp)])
+        em_stack = np.vstack([em_stack, polygon_centroid(ep)])
 
-    mims_shapes = [base_transform(mims_shape) for mims_shape in mims_shapes]
-    mims_pts = [base_transform(mims_pt)[0] for mims_pt in mims_pts]
-    final_em_pts = em_pts.copy()
-    final_mims_pts = mims_pts.copy()
-    for em, mi in zip(em_shapes, mims_shapes):
-        final_em_pts.append(polygon_centroid(em))
-        final_mims_pts.append(polygon_centroid(mi))
-        final_em_pts.extend(radial_spokes(em))
-        final_mims_pts.extend(radial_spokes(mi))
+    #   2a. Initial affine prediction --------------------------------------
+    mims_pred = base_tf(mims_stack.copy())
 
-    em_pts = np.asarray(final_em_pts)
-    mims_pts = np.asarray(final_mims_pts)
-    df = pd.DataFrame(
-        {
-            "em_x": em_pts[:, 0],
-            "em_y": em_pts[:, 1],
-            "mims_x": mims_pts[:, 0],
-            "mims_y": mims_pts[:, 1],
-        }
+    # ---------- 3. median offset tweak -----------------------------
+    delta = mims_pred - em_stack
+    offset = np.median(delta, axis=0)
+    mims_tf = SimilarityTransform(
+        scale=1, rotation=base_tf.rotation, translation=[0, 0]
+    )
+    em_tf = SimilarityTransform(
+        scale=1 / base_tf.scale,
+        translation=-(base_tf.translation - offset) / base_tf.scale,
     )
 
-    # average all mims_x/mims_y for each unique (em_x,em_y)
-    grp = df.groupby(["em_x", "em_y"], as_index=False).mean()
-
-    # pull back into numpy arrays
-    em_pts = grp[["em_x", "em_y"]].to_numpy()
-    mims_pts = grp[["mims_x", "mims_y"]].to_numpy()
-    # Estimate the TPS transform
-    tps = ThinPlateSplineTransform()
-    tps.estimate(em_pts, mims_pts)
-
-    mims_corners_em = np.array(
-        [[0, 0], [w_mims - 1, 0], [w_mims - 1, h_mims - 1], [0, h_mims - 1]],
-        dtype=float,
-    )
-
-    if needs_flip:  # same flip rule
-        mims_corners_em[:, 0] = (w_mims - 1) - mims_corners_em[:, 0]
-
-    em_corners = base_transform(mims_corners_em)  # MIMS → EM  (no TPS)
-
-    xmin, ymin = np.floor(em_corners.min(axis=0)).astype(int)
-    xmax, ymax = np.ceil(em_corners.max(axis=0)).astype(int)
-
-    canvas_bbox_em = [
-        [int(xmin), int(ymin)],
-        [int(xmax), int(ymin)],
-        [int(xmax), int(ymax)],
-        [int(xmin), int(ymax)],
-    ]
-
-    # Find the bounding box of the MIMS image post TPS
+    #   add image corners so the TPS controls the entire canvas -----
     mims_corners = np.array(
         [[0, 0], [w_mims - 1, 0], [w_mims - 1, h_mims - 1], [0, h_mims - 1]],
         dtype=float,
     )
-    mims_corners = base_transform(mims_corners)
-    mims_corners = tps(mims_corners)
-    min_x = math.floor(np.min(mims_corners[:, 0]))
-    min_y = math.floor(np.min(mims_corners[:, 1]))
-    max_x = math.ceil(np.max(mims_corners[:, 0]))
-    max_y = math.ceil(np.max(mims_corners[:, 1]))
-    new_width = max_x - min_x
-    new_height = max_y - min_y
+    if needs_flip:
+        mims_corners = _flip_x(mims_corners, max_x)
+    em_corners = mims_tf(mims_corners)
+    min_xy = np.min(em_corners, axis=0)
+    max_xy = np.max(em_corners, axis=0)
+    shift = -np.minimum(min_xy, 0)
+    if (shift > 0).any():
+        # rebuild the two similarity transforms **with the shift added**
+        mims_tf = SimilarityTransform(
+            scale=1, rotation=base_tf.rotation, translation=shift  # <-- NEW
+        )
 
-    new_bbox = [
-        [min_x, min_y],  # top-left  [x, y]
-        [max_x, min_y],  # top-right
-        [max_x, max_y],  # bottom-right
-        [min_x, max_y],  # bottom-left
+        em_tf = SimilarityTransform(
+            scale=1 / base_tf.scale,
+            translation=(  # original → plus the same shift
+                -(base_tf.translation - offset) / base_tf.scale + shift
+            ),
+        )
+    em_corners = mims_tf(mims_corners)
+
+    mims_pred = mims_tf(mims_stack)
+    em_pred = em_tf(em_stack)
+
+    mims_pred = np.vstack([mims_pred, em_corners])
+    em_pred = np.vstack([em_pred, em_corners])
+
+    # ---------- 4. thin-plate spline fit ---------------------------
+    tps = ThinPlateSplineTransform()
+    # NOTE: we pass (dst, src) so that `tps` is the **inverse** map,
+    #       exactly what `skimage.transform.warp` expects
+    tps.estimate(em_pred, mims_pred)
+    tps_inv = ThinPlateSplineTransform()
+    tps_inv.estimate(mims_pred, em_pred)
+
+    # ---------- 6. Get the EM BBOX ------------------------------
+    canvas_corners = mims_tf(mims_corners)
+    em_corners = em_tf.inverse(canvas_corners)
+    x0, y0 = np.floor(em_corners.min(axis=0)).astype(int)
+    x1, y1 = np.ceil(em_corners.max(axis=0)).astype(int)
+
+    # clamp to the EM image limits (in case any indices went slightly <0 or >size-1)
+    em_img = np.array(Image.open(mims_img.canvas.images.first().file.path))
+    H, W = em_img.shape[:2]
+    x0, x1 = np.clip([x0, x1], 0, W)
+    y0, y1 = np.clip([y0, y1], 0, H)
+
+    # ---------- 6. save bbox & regenerate TIFFs --------------------
+    mims_img.canvas_bbox = [
+        [int(x0), int(y0)],
+        [int(x1), int(y0)],
+        [int(x1), int(y1)],
+        [int(x0), int(y1)],
     ]
+    mims_img.mims_tiff_images.all().delete()
+    mims_img.save(update_fields=["canvas_bbox"])
+    output_shape = [int(max_xy[1] - min_xy[1]), int(max_xy[0] - min_xy[0])]
 
-    test = tps(mims_pts[:10])  # 10 arbitrary points
-    print("mean residual (px):", np.linalg.norm(test - em_pts[:10], axis=1).mean())
+    t0 = time.time()
+    for iso in mims_img.isotopes.all():
+        print("Unwarping", iso.name)
+        iso_img = image_from_im_file(mims_img.file.path, iso.name, autocontrast=False)
+        if needs_flip:
+            iso_img = iso_img[:, ::-1]
+        iso_img = warp(iso_img, mims_tf.inverse, output_shape=output_shape)
+        iso_img = warp(iso_img, tps, output_shape=output_shape)
+        iso_img = cv2.resize(iso_img, (y1 - y0, x1 - x0))
+        reg_loc = Path(mims_img.file.path).with_suffix("") / "registration"
+        out_path = reg_loc / f"{iso.name}_unwarped.png"
+        cv2.imwrite(str(out_path), iso_img, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+        with open(out_path, "rb") as fh:
+            MimsTiffImage.objects.create(
+                mims_image=mims_img,
+                image=File(fh, name=out_path.name),
+                name=f"{iso.name}",
+                registration_bbox=mims_img.canvas_bbox,
+            )
+        os.remove(out_path)
+    print("unwarp time:", round(time.time() - t0, 1), "s")
 
-    # 0. translation expressed as simple arithmetic --------------------------
-    def apply_translation(pts, dx, dy):
-        out = pts.copy()
-        out[:, 0] -= dx  #   ← note the sign: translating the *output*
-        out[:, 1] -= dy  #     canvas by (–min_x, –min_y)
-        return out
-
-    # 1. grid of source-image pixels -----------------------------------------
-    # Then load a MIMS isotope image, rotate it, TPS it, and then translate and upscale it
-    yy, xx = np.mgrid[0:h_mims, 0:w_mims].astype(np.float32)
-    src_pts = np.column_stack((xx.ravel(), yy.ravel()))
-    # 2. forward composite:  Affine  →  TPS  →  Translation
-    pts = base_transform(src_pts)  # affine       (float64 → fine)
-    pts = tps(pts)  # TPS forward
-    dst_pts = apply_translation(pts, min_x, min_y)
-    print("after apply translation", time.time() - start_time)
-    H, W = new_height, new_width
-    if H > 12000 or W > 12000:
-        print(
-            f"Way too big at {H}x{W}, skipping registering and deleting the reg_shapes so can restart"
-        )
-        mims_path = Path(mims_image.file.path)
-        shapes_json_path = Path(
-            mims_path.parent / mims_path.stem / "registration" / "reg_shapes.json"
-        )
-        # os.remove(shapes_json_path)
-        mims_image.status = "REGISTERING_ISSUE"
-        mims_image.save(update_fields=["status"])
-        return False
-        # raise ValueError(f"New size is too large: {H}x{W}")
-    grid_y, grid_x = np.mgrid[0:H, 0:W]
-
-    # linear interpolation; fill_value = -1 marks holes beyond convex hull
-    map_x = griddata(
-        dst_pts, src_pts[:, 0], (grid_x, grid_y), method="linear", fill_value=-1
-    ).astype(np.float32)
-    map_y = griddata(
-        dst_pts, src_pts[:, 1], (grid_x, grid_y), method="linear", fill_value=-1
-    ).astype(np.float32)
-    reg_loc = Path(mims_image.file.path).with_suffix("") / "registration"
-    map_path = reg_loc / "warp_maps_float32.npz"
-    np.savez_compressed(map_path, map_x=map_x, map_y=map_y)
-    print("after savez", time.time() - start_time)
-
-    # ---------------------------------------------------------------
-    mims_image.canvas_bbox = canvas_bbox_em
-    mims_image.save(update_fields=["canvas_bbox"])
-    # delete all existing tiff images
-    mims_image.mims_tiff_images.all().delete()
-    # create new tiff images
-    print("pre unwarp", time.time() - start_time)
-    for isotope in mims_image.isotopes.all():
-        unwarp_mims_image(mims_image, isotope.name, map_x, map_y)
-    print("post unwarp", time.time() - start_time)
-    mims_image.status = "DEWARPED_ALIGNED"
-    mims_image.save(update_fields=["status"])
+    mims_img.status = "DEWARPED_ALIGNED"
+    mims_img.save(update_fields=["status"])
     print("done")
     return True
-
-
-def unwarp_mims_image(mims_image, isotope_name, map_x, map_y):
-    raw = image_from_im_file(mims_image.file.path, isotope_name, autocontrast=False)
-    reg_loc = Path(mims_image.file.path).with_suffix("") / "registration"
-    if raw is None:
-        return
-    if mims_image.flip:
-        # raw_width = raw.shape[1]
-        # raw = [[raw_width - 1 - x, y] for x, y in raw]
-        raw = raw[:, ::-1]
-
-    warped_img = cv2.remap(
-        raw.astype(np.float32),  # source
-        map_x,
-        map_y,  # maps we just saved
-        interpolation=cv2.INTER_LINEAR,
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=0,
-    ).astype(raw.dtype)
-
-    out_path = reg_loc / f"{isotope_name}_unwarped.png"
-    warped_png = warped_img.astype(np.uint16)
-    cv2.imwrite(str(out_path), warped_png, [cv2.IMWRITE_PNG_COMPRESSION, 0])
-    with open(out_path, "rb") as fh:
-        MimsTiffImage.objects.create(
-            mims_image=mims_image,
-            image=File(fh, name=out_path.name),
-            name=f"{isotope_name}",
-            registration_bbox=mims_image.canvas_bbox,
-        )
-    os.remove(out_path)

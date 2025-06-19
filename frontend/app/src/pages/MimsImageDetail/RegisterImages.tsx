@@ -10,6 +10,8 @@ import OpenSeaDragonSegmenter from "@/components/shared/OpenSeaDragonSegmenter";
 import { usePrepareCanvasForGuiQuery } from "@/queries/queries";
 import { cn } from "@/lib/utils";
 import DetailAligned from "./DetailAligned";
+import { v4 as uuidv4 } from 'uuid';
+import ShapePointIndexList from "./ShapePointIndexList";
 
 const fetchMimsImageDetail = async (id: string) => {
   const res = await api.get(`mims_image/${id}/`);
@@ -47,6 +49,15 @@ const MimsImage = () => {
           color: "green"
         });
       });
+      existingRegistrationData.em_points?.forEach(([row, col]: number[]) =>
+        canvasStore.addPoint({
+          id: uuidv4(),
+          x: col,
+          y: row,
+          color: "green",
+          type: "point_confirmed",
+        })
+      );
       existingRegistrationData.mims_shapes?.forEach((shape: any) => {
         mimsStore.addOverlay({
           type: "shape_confirmed",
@@ -54,6 +65,15 @@ const MimsImage = () => {
           color: "green"
         });
       });
+      existingRegistrationData.mims_points?.forEach(([row, col]: number[]) =>
+        mimsStore.addPoint({
+          id: uuidv4(),
+          x: col,
+          y: row,
+          color: "green",
+          type: "point_confirmed",
+        })
+      );
     }
   }, [existingRegistrationData]);
 
@@ -191,6 +211,7 @@ const MimsImage = () => {
         </div>
         </div>
       </div>
+      <ShapePointIndexList />
     </div>
   );
 };
