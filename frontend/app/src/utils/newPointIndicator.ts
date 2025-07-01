@@ -23,5 +23,6 @@ export default function newPointIndicator(number: number, color: string, showNum
     numberLabel.style.left = "10px";
     container.appendChild(numberLabel);
   }
+  container.setAttribute("pointer-events", "none");
   return container;
 }

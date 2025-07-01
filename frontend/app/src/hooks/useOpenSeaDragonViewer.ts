@@ -1,241 +1,400 @@
 // useOpenSeadragonViewer.ts
-import { useRef, useEffect } from "react";
-import OpenSeadragon from "openseadragon";
-import { CanvasStore as CanvasStoreType } from "@/interfaces/CanvasStore";
-interface UseOpenSeadragonViewerProps {
+import { useEffect, useRef, useCallback, useState } from "react";
+import OpenSeadragon, { TileSource, Viewer } from "openseadragon";
+
+/* ------------ utility: stable key for deep comparison --------------- */
+const keyOf = (src?: string | string[]) =>
+  Array.isArray(src) ? src.join("|") : src ?? "";
+
+interface Props {
   iiifContent?: string;
-  url?: string;
-  canvasStore: CanvasStoreType;
+  url?: string | string[];
+  positionedImages?: Array<{
+    url: string;
+    name: string;
+    bounds: number[] | null;
+  }>;
+  canvasStore: any;   // Store function
   mode: "shapes" | "draw" | "navigate" | "points";
 }
 
 export function useOpenSeadragonViewer({
   iiifContent,
   url,
+  positionedImages,
   mode = "navigate",
-  canvasStore
-}: UseOpenSeadragonViewerProps) {
-  // HTML container for OSD
-  const viewerRef = useRef<HTMLDivElement | null>(null);
-  // Store the OSD viewer instance
-  const osdViewerRef = useRef<OpenSeadragon.Viewer | null>(null);
+  canvasStore,
+}: Props) {
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const osdRef    = useRef<Viewer>();
+  const refImgRef = useRef<OpenSeadragon.TiledImage | null>(null); // canonical
+  const [isContainerReady, setIsContainerReady] = useState(false);
+  const [isViewerInitialized, setIsViewerInitialized] = useState(false);
+  const isDestroyedRef = useRef(false); // Add cleanup flag
 
-  const {
-    zoom,
-    flip,
-    rotation,
-    coordinates,
-    setFlip,
-    setRotation,
-    setZoom
-  } = canvasStore;
+  const isNav = mode === "navigate";
 
-  let allowZoom = false, allowFlip = false, allowRotation = false
-  if (mode === "navigate") {
-    allowZoom = true;
-    allowFlip = true;
-    allowRotation = true;
-  }
+  // Get store state
+  const storeState = canvasStore();
 
-  // Create or re-create the viewer
-  useEffect(() => {
-    if (!viewerRef.current || (!iiifContent && !url)) return;
-
-    // Destroy any existing
-    if (osdViewerRef.current) {
-      osdViewerRef.current.destroy();
+  // Check if container is ready
+  const checkContainerReady = useCallback(() => {
+    if (!viewerRef.current) return false;
+    
+    const rect = viewerRef.current.getBoundingClientRect();
+    const isReady = rect.width > 50 && rect.height > 50; // Require larger minimum size
+    
+    if (isReady && !isContainerReady) {
+      setIsContainerReady(true);
+    } else if (!isReady && isContainerReady) {
+      setIsContainerReady(false);
     }
-    osdViewerRef.current = OpenSeadragon({
-      prefixUrl: "/openseadragon/images/",
-      element: viewerRef.current,
-      tileSources: [
-        iiifContent
-          ? { tileSource: iiifContent }
-          : {
-              type: "image",
-              url,
-              buildPyramid: false
-            }
-      ],
-      gestureSettingsMouse: {
-        clickToZoom: allowZoom,
-        scrollToZoom: allowZoom,
-        pinchToZoom: allowZoom,
-        dragToPan: mode === "navigate"
-      },
-      gestureSettingsTouch: {
-        pinchToZoom: allowZoom, 
-        dragToPan: mode === "navigate"
-      },
-      zoomPerClick: allowZoom ? 2 : 1,
-      zoomPerScroll: allowZoom ? 1.2 : 1,
-      animationTime: 0,
-      showNavigator: mode === "navigate",
-      panHorizontal: mode === "navigate",
-      panVertical: mode === "navigate",
-      showNavigationControl: mode === "navigate",
-      showZoomControl: mode === "navigate",
-      showRotationControl: false,
-      crossOriginPolicy: "Anonymous"
+    
+    return isReady;
+  }, [isContainerReady]);
+
+  /* ------------------------------------------------------------------ 1. Monitor container size and validate sources */
+  useEffect(() => {
+    if (!viewerRef.current) return;
+
+    // Initial container check
+    checkContainerReady();
+
+    // Set up resize observer
+    const resizeObserver = new ResizeObserver(() => {
+      checkContainerReady();
     });
     
-    const viewer = osdViewerRef.current;
-    viewer.addHandler('canvas-key',event => {
-      if (['q', 'w', 'e', 'r', 'a', 's', 'd', 'f'].includes(event.originalEvent.key)) {
-          event.preventDefaultAction = true;
-      }
-    });
+    resizeObserver.observe(viewerRef.current);
 
-    // If we allow rotation, wire up the OSD rotate event
-    if (allowRotation) {
-      viewer.addHandler("rotate", () => {
-        const newRotation = viewer.viewport.getRotation();
-        if (newRotation !== rotation) {
-          setRotation(newRotation);
-        }
-      });
-    }
-
-    // If we allow flip, wire up the OSD flip event
-    if (allowFlip) {
-      viewer.addHandler("flip", () => {
-        const newFlip = viewer.viewport.getFlip();
-        if (newFlip !== flip) {
-          setFlip(newFlip);
-        }
-      });
-    }
-    if (allowZoom) {
-      viewer.addHandler("zoom", () => {
-        const vp = viewer.viewport;
-        if (!vp) return;
-        const newZoom = vp.viewportToImageZoom(vp.getZoom());
-        if (newZoom !== zoom) {
-          setZoom(newZoom);
-        }
-      });
-    }
-    // Fit to initial coordinates if provided
-    if ((coordinates && coordinates.length > 0) || flip || rotation) {
-      viewer.addOnceHandler("open", () => {
-        const tiledImage = viewer.world.getItemAt(0);
-        if (!tiledImage) return;
-        if (coordinates && coordinates.length > 1) {
-          const tl = {x:  coordinates[0].x?.[0] || coordinates[0].x, y: coordinates[0].y?.[0] || coordinates[0].y};
-          const br = {x: coordinates[1].x?.[0] || coordinates[1].x, y: coordinates[1].y?.[0] || coordinates[1].y};
-          if (flip) {
-            tl.x = tiledImage.getContentSize().x - tl.x;
-            br.x = tiledImage.getContentSize().x - br.x;
-          }
-          const topLeft = tiledImage.imageToViewportCoordinates(
-            tl.x,
-            tl.y
-          );
-          const bottomRight = coordinates[1]
-            ? tiledImage.imageToViewportCoordinates(
-                br.x,
-                br.y
-              )
-            : tiledImage.imageToViewportCoordinates(
-                br.x,
-                br.y
-              );
-
-          const bounds = new OpenSeadragon.Rect(
-            topLeft.x,
-            topLeft.y,
-            bottomRight.x - topLeft.x,
-            bottomRight.y - topLeft.y
-          );
-          viewer.viewport.fitBounds(bounds, true);
-        }
-        if (rotation) {
-          tiledImage.setRotation(-rotation);
-          viewer.viewport.goHome(true);
-        }
-        if (flip) {
-          tiledImage.setFlip(flip);
-        }
-      });
-    }
-
-    // Clean up on unmount
     return () => {
-      if (osdViewerRef.current) {
-        osdViewerRef.current.destroy();
-      }
+      resizeObserver.disconnect();
     };
-  }, [iiifContent, url, viewerRef.current, coordinates, coordinates?.[0]?.x]);
+  }, [checkContainerReady]);
 
+
+  /* ------------------------------------------------------------------ 2. Initialize viewer when everything is ready */
   useEffect(() => {
-    const viewer = osdViewerRef.current as any;
-    if (!viewer) return;
-    viewer.forceRedraw();
-  }, [coordinates]);
+    if (!isContainerReady ||  isViewerInitialized) {
+      return;
+    }
 
+    const container = viewerRef.current;
+    if (!container) return;
+
+    // Double-check dimensions
+    const rect = container.getBoundingClientRect();
+    if (rect.width <= 50 || rect.height <= 50) {
+      console.warn("Container still has insufficient dimensions, skipping initialization");
+      return;
+    }
+
+    try {
+      // Create a simple configuration
+      const config: any = {
+        element: container,
+        prefixUrl: "/openseadragon/images/",
+        blendTime: 0.1,
+        alwaysBlend: false,
+        gestureSettingsMouse: {
+          clickToZoom: isNav,
+          scrollToZoom: isNav,
+          pinchToZoom: isNav,
+          dragToPan:  isNav,
+        },
+        gestureSettingsTouch: {
+          pinchToZoom: isNav,
+          dragToPan:  isNav,
+        },
+        zoomPerClick:  isNav ? 2 : 1,
+        zoomPerScroll: isNav ? 1.2 : 1,
+        animationTime: 0,
+        showNavigator: isNav,
+        panHorizontal: isNav,
+        panVertical:   isNav,
+        showNavigationControl: isNav,
+        showZoomControl:       isNav,
+        crossOriginPolicy: "Anonymous",
+        minZoomLevel: 0.1,
+        maxZoomLevel: 100,
+        visibilityRatio: 0.1,
+      };
+
+      osdRef.current = OpenSeadragon(config);
+
+      const v = osdRef.current;
+
+      // Debug viewport state immediately after creation
+
+      /* ----------- zoom synchronisation (TWO-WAY) ------------------------ */
+      v.addOnceHandler("open", () => {
+        // reference layer will be replaced every time world is rebuilt
+        refImgRef.current = v.world.getItemAt(0) ?? null;
+
+        // Apply initial flip and rotation to the new reference
+        if (refImgRef.current) {
+          refImgRef.current.setFlip(storeState.flip);
+          refImgRef.current.setRotation(-storeState.rotation);
+        }
+      });
+
+      // Add error handler for tile loading failures
+      v.addHandler("tile-load-failed", (event: any) => {
+        console.warn("Tile load failed:", event);
+      });
+
+      setIsViewerInitialized(true);
+
+    } catch (error) {
+      console.error("Failed to initialize OpenSeaDragon viewer:", error);
+      setIsViewerInitialized(false);
+    }
+
+    /* ----------- clean-up on unmount ----------------------------------- */
+    return () => {
+      isDestroyedRef.current = true;
+      if (osdRef.current) {
+        try {
+          osdRef.current.destroy();
+        } catch (error) {
+          console.warn("Error destroying OpenSeaDragon viewer:", error);
+        }
+        osdRef.current = undefined;
+      }
+      setIsViewerInitialized(false);
+    };
+  }, [isContainerReady]);
+
+  /* ------------------------------------------------------------------ 3. keep mode toggles in sync */
   useEffect(() => {
-    const viewer = osdViewerRef.current as any;
-    if (!viewer) return;
-    viewer.gestureSettingsMouse = {
-      clickToZoom: mode === "navigate",
-      scrollToZoom: mode === "navigate",
-      pinchToZoom: mode === "navigate",
-      dragToPan: mode === "navigate"
-    }
-    viewer.gestureSettingsTouch = {
-      pinchToZoom: mode === "navigate",
-      dragToPan: mode === "navigate"
-    }
-    viewer.zoomPerClick = mode === "navigate" ? 2 : 1;
-    viewer.zoomPerScroll = mode === "navigate" ? 1.2 : 1;
-    viewer.panHorizontal = mode === "navigate";
-    viewer.panVertical = mode === "navigate";
-    viewer.showNavigator = mode === "navigate";
-    viewer.showNavigationControl = mode === "navigate";
-    viewer.showZoomControl = mode === "navigate";
-    viewer.showRotationControl = mode === "navigate";
-    viewer.forceRedraw();
-  }, [mode])
+    const v = osdRef.current;
+    if (!v || !isViewerInitialized || isDestroyedRef.current) return;
 
-  // Keep OSD zoom in sync with store
+    // Use type assertion to access these properties
+    const vAny = v as any;
+    
+    // Enable mouse events for both navigate and draw modes
+    const enableMouseEvents = true;
+    
+    Object.assign(vAny.gestureSettingsMouse, {
+      clickToZoom: isNav,
+      scrollToZoom: isNav,
+      pinchToZoom: isNav,
+      dragToPan:   isNav,
+    });
+    Object.assign(vAny.gestureSettingsTouch, {
+      pinchToZoom: isNav,
+      dragToPan:   isNav,
+    });
+    vAny.zoomPerClick  = isNav ? 2 : 1;
+    vAny.zoomPerScroll = isNav ? 1.2 : 1;
+    vAny.panHorizontal = vAny.panVertical = isNav;
+    vAny.showNavigator = isNav;
+    v.setMouseNavEnabled(enableMouseEvents);
+  }, [isNav, mode, isViewerInitialized]);
+
+  /* ------------------------------------------------------------------ 4. apply flip/rotation changes */
   useEffect(() => {
-    const viewer = osdViewerRef.current;
-    if (!viewer || !viewer.viewport) return;
-
-    const currentZoom = viewer.viewport.viewportToImageZoom(viewer.viewport.getZoom());
-    if (currentZoom !== zoom) {
-      viewer.viewport.zoomTo(viewer.viewport.imageToViewportZoom(zoom), undefined, true);
+    if (refImgRef.current && isViewerInitialized && !isDestroyedRef.current) {
+      refImgRef.current.setFlip(storeState.flip);
+      refImgRef.current.setRotation(-storeState.rotation);
     }
-  }, [zoom]);
+  }, [storeState.flip, storeState.rotation, isViewerInitialized]);
 
-  // Keep OSD rotation in sync
+  /* ------------------------------------------------------------------ 5. rebuild WORLD when sources change */
+  const srcKey = `${iiifContent ?? ""}|${keyOf(url)}|${positionedImages ? positionedImages.map(img => img.url).join("|") : ""}`;
   useEffect(() => {
-    const viewer = osdViewerRef.current;
-    if (!viewer || !viewer.viewport) return;
-    const tiledImage = viewer.world.getItemAt(0);
-    if (!tiledImage) return;
+    // Add a small delay to prevent rapid rebuilds
+    const timeoutId = setTimeout(() => {
+      const v = osdRef.current;
+      if (!v || !isViewerInitialized || isDestroyedRef.current) return;
 
-    const currentRotation = tiledImage.getRotation();
-    if (currentRotation !== rotation) {
-      tiledImage.setRotation(-rotation);
-    }
-  }, [rotation]);
+      // Ensure container still has dimensions
+      const container = v.element;
+      const rect = container.getBoundingClientRect();
+      if (rect.width <= 50 || rect.height <= 50) {
+        console.warn("Container has insufficient dimensions, skipping world rebuild");
+        return;
+      }
 
-  // Keep OSD flip in sync
-  useEffect(() => {
-    const viewer = osdViewerRef.current;
-    if (!viewer || !viewer.viewport) return;
-    const tiledImage = viewer.world.getItemAt(0);
-    if (!tiledImage) return;
-    const currentFlip = tiledImage.getFlip();
-    if (currentFlip !== flip) {
-      tiledImage.setFlip(flip);
-    }
-  }, [flip]);
+      const sources: TileSource[] = [];
 
-  // Return the DOM ref (for the <div>) and the OSD instance
+      if (iiifContent) {
+        sources.push({ tileSource: iiifContent } as any);
+      }
+
+      if (url) {
+        const urls = Array.isArray(url) ? url : [url];
+        console.log("Adding URL sources:", urls);
+        urls.forEach(u => sources.push({ type: "image", url: u, buildPyramid: true } as any));
+      }
+
+      /* Remove old layers & add new ones */
+      try {
+        v.world.removeAll();
+        refImgRef.current = null;                // reset canonical
+
+        // If no valid sources, add a placeholder to prevent bounds issues
+        if (sources.length === 0 && (!positionedImages || positionedImages.length === 0)) {
+          console.warn("No valid sources found, adding placeholder image");
+          // Create a 1x1 transparent pixel as a placeholder
+          const canvas = document.createElement('canvas');
+          canvas.width = 1;
+          canvas.height = 1;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = 'rgba(0,0,0,0)';
+            ctx.fillRect(0, 0, 1, 1);
+          }
+          const placeholderUrl = canvas.toDataURL();
+          
+          v.addTiledImage({
+            tileSource: { type: "image", url: placeholderUrl } as any,
+            crossOriginPolicy: "Anonymous",
+            success: (event: any) => {
+              if (!refImgRef.current && !isDestroyedRef.current) {
+                refImgRef.current = event.item;
+              }
+            },
+            error: (event: any) => {
+              console.error("Failed to load placeholder:", event);
+            }
+          });
+          return;
+        }
+
+        // Add base layers (iiifContent and url) first
+        sources.forEach((src, index) => {
+          const tileSourceSpec = (src as any).tileSource ?? src; // ← unwrap once
+
+          v.addTiledImage({
+            tileSource: tileSourceSpec,
+            crossOriginPolicy: "Anonymous",
+            success: (event: any) => {
+              if (!refImgRef.current && !isDestroyedRef.current) {
+                refImgRef.current = event.item;  // first = canonical
+                // Reapply rotation and flip after the new reference is set
+                const currentFlip = storeState.flip;
+                const currentRotation = storeState.rotation;
+                event.item.setFlip(currentFlip);
+                event.item.setRotation(-currentRotation);
+                
+                // Check the bounds of the loaded image
+                const bounds = event.item.getBounds();
+                
+                // Check viewport bounds after image is loaded
+                const viewportBounds = v.viewport.getBounds();
+                
+                // For the EM image (background), just let it display normally
+                // Don't try to fit it to the viewport since it's the base layer
+              }
+            },
+            error: (event: any) => {
+              console.error(`Failed to load tile source ${index}:`, event);
+            }
+          });
+        });
+
+        // Add positioned images on top
+        if (positionedImages) {
+          // Wait for the base image to be loaded before adding positioned images
+          const addPositionedImages = () => {
+            if (v.world.getItemCount() === 0 || isDestroyedRef.current) {
+              setTimeout(addPositionedImages, 100); // Retry after 100ms
+              return;
+            }
+            
+            positionedImages.forEach((positionedImage) => {
+              const tileSourceSpec = { type: "image", url: positionedImage.url, buildPyramid: true } as any;
+              
+              const addImageOptions: any = {
+                tileSource: tileSourceSpec,
+                crossOriginPolicy: "Anonymous",
+                error: (event: any) => {
+                  console.error("Failed to load positioned image:", positionedImage.url, event);
+                }
+              };
+
+              // Use x, y, width, and height parameters for positioning and sizing
+              if (positionedImage.bounds) {
+                const [x, y, width, height] = positionedImage.bounds;
+                
+                // Validate bounds to prevent zero dimensions
+                if (width <= 0 || height <= 0) {
+                  console.warn("Invalid bounds for positioned image:", positionedImage.name, positionedImage.bounds);
+                  return;
+                }
+                
+                // Get base image bounds for coordinate conversion
+                const baseImage = v.world.getItemAt(0);
+                
+                if (baseImage) {
+                  const baseBounds = baseImage.getBounds();
+                  
+                  // Validate base bounds
+                  if (baseBounds.width <= 0 || baseBounds.height <= 0) {
+                    console.warn("Base image has invalid bounds:", baseBounds);
+                    return;
+                  }
+                  
+                  // The base image might already be at (0,0), so we might not need to add baseBounds.x/y
+                  // Let's try using just the normalized coordinates multiplied by the base image dimensions
+                  const viewportX = x * baseBounds.width;
+                  const viewportY = y * baseBounds.height; // No inversion needed
+                  const viewportWidth = width * baseBounds.width;
+                  // Note: OpenSeaDragon doesn't support both width and height, so we'll use just width
+                  
+                  addImageOptions.x = viewportX;
+                  addImageOptions.y = viewportY;
+                  addImageOptions.width = viewportWidth;
+                } else {
+                  // Fallback to normalized coordinates if base image not available
+                  addImageOptions.x = x;
+                  addImageOptions.y = y;
+                  addImageOptions.width = width;
+                }
+              }
+
+              v.addTiledImage(addImageOptions);
+            });
+          };
+          
+          // Start the process
+          addPositionedImages();
+        }
+      } catch (error) {
+        console.error("Error rebuilding OpenSeaDragon world:", error);
+      }
+    }, 50); // 50ms debounce
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [srcKey, positionedImages, isViewerInitialized, iiifContent, url]);
+
+  /* ------------------------------------------------------------------ helpers */
+  const setLayerOpacity = useCallback((i: number, o: number) => {
+    osdRef.current?.world.getItemAt(i)?.setOpacity(o);
+  }, []);
+
+  const setLayerVisibility = useCallback(
+    (i: number, visible: boolean) => setLayerOpacity(i, visible ? 1 : 0),
+    [setLayerOpacity],
+  );
+
+  const getLayerCount = useCallback(
+    () => osdRef.current?.world.getItemCount() ?? 0,
+    [],
+  );
+
+  /* ------------------------------------------------------------------ API */
   return {
     viewerRef,
-    osdViewer: osdViewerRef.current
+    osdViewer: osdRef.current || null,
+    setLayerOpacity,
+    setLayerVisibility,
+    getLayerCount,
+    isContainerReady,
+    isViewerInitialized,
   };
 }

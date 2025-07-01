@@ -1,17 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import React, { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useParams, useNavigate, Link } from "@tanstack/react-router";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/shared/ui/tabs";
 import api from "@/api/api";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/shared/ui/tabs";
 import { useCanvasViewer } from "@/stores/canvasViewer";
 import { useMimsViewer } from "@/stores/mimsViewer";
-import OpenSeaDragonSegmenter from "@/components/shared/OpenSeaDragonSegmenter";
 import { usePrepareCanvasForGuiQuery } from "@/queries/queries";
-import { cn } from "@/lib/utils";
+import OpenSeaDragonSegmenter from "@/components/shared/OpenSeaDragonSegmenter";
+import ShapePointIndexList from "./ShapePointIndexList";
 import DetailAligned from "./DetailAligned";
 import { v4 as uuidv4 } from 'uuid';
-import ShapePointIndexList from "./ShapePointIndexList";
 
 const fetchMimsImageDetail = async (id: string) => {
   const res = await api.get(`mims_image/${id}/`);
@@ -23,14 +22,16 @@ const fetchExistingRegistration = async (id: string) => {
   return res.data;
 };
 
-const MimsImage = () => {
-  const canvasStore = useCanvasViewer();
-  const mimsStore = useMimsViewer();
-  const { setCoordinates: setEmCoordinates } = canvasStore;
-  const { setFlip: setMimsFlip, setRotation: setMimsRotation } = mimsStore;
+const MimsImage = ({isRegistering, setIsRegistering}: {isRegistering: boolean, setIsRegistering: (isRegistering: boolean) => void}) => {
+  const canvasStoreApi = useCanvasViewer;
+  const mimsStoreApi = useMimsViewer;
+  const canvasStoreState = canvasStoreApi();
+  const mimsStoreState = mimsStoreApi();
+  const { setCoordinates: setEmCoordinates } = canvasStoreState;
+  const { setFlip: setMimsFlip, setRotation: setMimsRotation } = mimsStoreState;
+
   const [openseadragonOptions, setOpenseadragonOptions] = useState<any>({defaultZoomLevel: 1});
   const [selectedIsotope, setSelectedIsotope] = useState("32S");
-  const [isRegistering, setIsRegistering] = useState(false);
 
   const queryClient = useQueryClient();
   const navigate = useNavigate({ from: window.location.pathname });
@@ -43,14 +44,14 @@ const MimsImage = () => {
   useEffect(() => {
     if (existingRegistrationData) {
       existingRegistrationData.em_shapes?.forEach((shape: any) => {
-        canvasStore.addOverlay({
+        canvasStoreState.addOverlay({
           type: "shape_confirmed",
           data: { polygon: shape },
           color: "green"
         });
       });
       existingRegistrationData.em_points?.forEach(([row, col]: number[]) =>
-        canvasStore.addPoint({
+        canvasStoreState.addPoint({
           id: uuidv4(),
           x: col,
           y: row,
@@ -59,14 +60,14 @@ const MimsImage = () => {
         })
       );
       existingRegistrationData.mims_shapes?.forEach((shape: any) => {
-        mimsStore.addOverlay({
+        mimsStoreState.addOverlay({
           type: "shape_confirmed",
           data: { polygon: shape },
           color: "green"
         });
       });
       existingRegistrationData.mims_points?.forEach(([row, col]: number[]) =>
-        mimsStore.addPoint({
+        mimsStoreState.addPoint({
           id: uuidv4(),
           x: col,
           y: row,
@@ -126,10 +127,10 @@ const MimsImage = () => {
     })
     return*/
     const data = {
-      em_shapes: canvasStore.overlays.filter(p => p.data?.polygon?.length > 3).map((o: any) => o.data?.polygon.map((p: any) => p.slice(0, 2)).filter((p: any) => p)),
-      mims_shapes: mimsStore.overlays.map((o: any) => o.data?.polygon.map((p: any) => p.slice(0, 2)).filter((p: any) => p)),
-      em_points: canvasStore.points.filter((p: any) => p.type === "point_confirmed").map((p: any) => ([p.y, p.x])),
-      mims_points: mimsStore.points.filter((p: any) => p.type === "point_confirmed").map((p: any) => ([p.y, p.x]))
+      em_shapes: canvasStoreState.overlays.filter(p => p.data?.polygon?.length > 3).map((o: any) => o.data?.polygon.map((p: any) => p.slice(0, 2)).filter((p: any) => p)),
+      mims_shapes: mimsStoreState.overlays.map((o: any) => o.data?.polygon.map((p: any) => p.slice(0, 2)).filter((p: any) => p)),
+      em_points: canvasStoreState.points.filter((p: any) => p.type === "point_confirmed").map((p: any) => ([p.y, p.x])),
+      mims_points: mimsStoreState.points.filter((p: any) => p.type === "point_confirmed").map((p: any) => ([p.y, p.x]))
     };
     api.post(`mims_image/${mimsImageId}/register/`, data).then(() => {
       queryClient.invalidateQueries();
@@ -138,10 +139,10 @@ const MimsImage = () => {
   }
 
   const clearAll = () => {
-    canvasStore.clearPoints();
-    mimsStore.clearPoints();
-    canvasStore.clearOverlays();
-    mimsStore.clearOverlays();
+    canvasStoreState.clearPoints();
+    mimsStoreState.clearPoints();
+    canvasStoreState.clearOverlays();
+    mimsStoreState.clearOverlays();
   }
   
   if (!mimsImage) {
@@ -166,8 +167,8 @@ const MimsImage = () => {
           <div className="flex flex-col">
             <div className="w-[600px] h-[600px]">
                 <OpenSeaDragonSegmenter 
-                  iiifContent={`${mimsImage?.em_dzi}`}
-                  canvasStore={canvasStore}
+                  iiifContent={mimsImage?.em_dzi}
+                  canvasStore={canvasStoreApi}
                   isotope="em"
                 />
           </div>
@@ -189,26 +190,32 @@ const MimsImage = () => {
                   </TabsTrigger>
                 ))}
               </TabsList>
-            {mimsImage?.isotopes?.map((isotope: any) => {
-              const isAu = isotope.name == "197Au";
-              let url = `http://localhost:8000/api/mims_image/${mimsImage.id}/image.png?species=${isotope.name}`
-              if (isAu) {
-                url += "&binarize=true"
-              } else {
-                url += "&autocontrast=true"
-              }
-              const isActive = selectedIsotope === isotope.name;
-              return (
-                <TabsContent key={isotope.name} value={isotope.name}  className={cn("flex flex-col", isActive ? "grow" : "hidden")}>
-                  <OpenSeaDragonSegmenter 
-                    url={url}
-                    canvasStore={mimsStore}
-                    isotope={isotope.name}
-                  />
-                </TabsContent>
-            )})}
+              {/* Only render the active tab content */}
+              {mimsImage?.isotopes?.map((isotope: any) => {
+                const isAu = isotope.name == "197Au";
+                let url = `http://localhost:8000/api/mims_image/${mimsImage.id}/image.png?species=${isotope.name}`
+                if (isAu) {
+                  url += "&binarize=true"
+                } else {
+                  url += "&autocontrast=true"
+                }
+                const isActive = selectedIsotope === isotope.name;
+                
+                // Only render the active tab
+                if (!isActive) return null;
+                
+                return (
+                  <TabsContent key={isotope.name} value={isotope.name} className="flex flex-col grow">
+                    <OpenSeaDragonSegmenter 
+                      url={url}
+                      canvasStore={mimsStoreApi}
+                      isotope={isotope.name}
+                    />
+                  </TabsContent>
+                );
+              })}
             </Tabs>
-        </div>
+          </div>
         </div>
       </div>
       <ShapePointIndexList />

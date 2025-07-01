@@ -10,7 +10,7 @@ from mims.services.registration_utils import (
 )
 from mims.services.prepare_registration_images import prepare_registration_images
 from core.models import Canvas
-from .models import MIMSAlignment, MIMSImageSet, MIMSImage
+from .models import MIMSAlignment, MIMSImageSet, MIMSImage, MimsTiffImage
 from .serializers import MIMSImageSetSerializer, MIMSImageSerializer
 from .tasks import (
     create_registration_images_task,
@@ -262,6 +262,13 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
                     }
                 )
             )
+        mims_image.registration_info = {
+            "em_shapes": em_shapes,
+            "mims_shapes": mims_shapes,
+            "em_points": em_points,
+            "mims_points": mims_points,
+        }
+        mims_image.save()
 
         register_images_task.delay(mims_image.id)
         global predictors
@@ -332,75 +339,22 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=["get"],
-        url_path=r"unwarped/(?P<tiff_id>[\w-]+)/(?P<filename>[\w\.-]+)",
+        url_path=r"unwarped/(?P<tiff_id>[\w-]+)/image.png",
     )
-    def unwarped(self, request, pk=None, tiff_id=None, filename=None):
+    def unwarped(self, request, pk=None, tiff_id=None):
         """Return a dewarped version of the MIMS image or EM image crop based on registration_bbox."""
-        mims_image = get_object_or_404(MIMSImage, pk=pk)
+        tiff_image = MimsTiffImage.objects.get(id=tiff_id)
 
-        # Get the first MimsTiffImage with registration_bbox to determine dimensions
-        reference_tiff = mims_image.mims_tiff_images.filter(
-            registration_bbox__isnull=False
-        ).first()
-
-        if not reference_tiff or not reference_tiff.registration_bbox:
+        if not tiff_image:
             return Response(
-                {"error": "No registration bbox found for this image"},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"error": f"Tiff image with ID {tiff_id} not found"},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Get registration_bbox dimensions
-        bbox = reference_tiff.registration_bbox
-        # Assuming bbox is in format [[top_left_x, top_left_y], [bottom_right_x, bottom_right_y]]
-        width = bbox[1][0] - bbox[0][0]
-        height = bbox[1][1] - bbox[0][1]
+        # Open the tiff image
+        tiff_img = Image.open(tiff_image.image.path)
 
-        # Determine the output size based on the registration_bbox
-        output_size = (int(width), int(height))
-
-        if tiff_id == "EM":
-            # For EM, crop the canvas image based on the registration_bbox
-            em_image = mims_image.image_set.canvas.images.first()
-            if not em_image:
-                return Response(
-                    {"error": "No EM image found for this canvas"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            # Open the EM image
-            em_img = Image.open(em_image.file.path)
-
-            # Crop the EM image to the registration_bbox
-            cropped_em = em_img.crop(
-                (
-                    int(bbox[0][0]),
-                    int(bbox[0][1]),  # left, upper
-                    int(bbox[1][0]),
-                    int(bbox[1][1]),  # right, lower
-                )
-            )
-
-            # Return the cropped EM image
-            response = HttpResponse(content_type="image/png")
-            cropped_em.save(response, format="PNG")
-            return response
-        else:
-            # For MIMS images, find the corresponding MimsTiffImage
-            tiff_image = mims_image.mims_tiff_images.filter(id=tiff_id).first()
-
-            if not tiff_image:
-                return Response(
-                    {"error": f"Tiff image with ID {tiff_id} not found"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            # Open the tiff image
-            tiff_img = Image.open(tiff_image.image.path)
-
-            # Resize the image to match the registration_bbox dimensions
-            resized_img = tiff_img.resize(output_size, Image.LANCZOS)
-
-            # Return the resized image
-            response = HttpResponse(content_type="image/png")
-            resized_img.save(response, format="PNG")
-            return response
+        # Return the resized image
+        response = HttpResponse(content_type="image/png")
+        tiff_img.save(response, format="PNG")
+        return response

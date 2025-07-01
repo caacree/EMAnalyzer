@@ -32,7 +32,7 @@ const MimsImage = () => {
   }
   
   return (
-    <RegisterImages />
+    <RegisterImages isRegistering={isRegistering} setIsRegistering={setIsRegistering} />
   );
 };
 

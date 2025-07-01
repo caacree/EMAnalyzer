@@ -3,7 +3,7 @@ import { create } from 'zustand'
 import { Point } from '@/interfaces/Point'
 import { v4 as uuidv4 } from 'uuid';
 
-interface CanvasViewerState {
+export interface CanvasViewerState {
   zoom: number
   flip: boolean
   rotation: number
@@ -81,3 +81,6 @@ export const useCanvasViewer = create<CanvasViewerState>((set) => ({
       ),
     })),
 }))
+
+// Export the store API for components that need getState
+export const canvasViewerStore = useCanvasViewer;

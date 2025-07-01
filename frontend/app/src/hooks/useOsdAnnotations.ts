@@ -1,14 +1,10 @@
 // useOsdAnnotations.ts
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import OpenSeadragon from "openseadragon";
 import { v4 as uuidv4 } from 'uuid';
-
-// Import your store interface
-import { CanvasStore as CanvasStoreType } from "@/interfaces/CanvasStore";
 // Import your drawing utils
 import addPointsAndOverlays from "@/utils/openseadragon/addPointsAndOverlays";
 import drawEphemeralStrokeInViewport from "@/utils/openseadragon/drawEphemeralStrokeInViewport";
-
 
 function getCursorSVG(diameter: number, strokeWidth = 2, color = "black") {
   const radius = diameter / 2;
@@ -23,7 +19,7 @@ function getCursorSVG(diameter: number, strokeWidth = 2, color = "black") {
 
 interface UseOsdAnnotationsProps {
   osdViewer: OpenSeadragon.Viewer | null;
-  canvasStore: CanvasStoreType;
+  storeApi: any;
   mode: "shapes" | "draw" | "navigate" | "points";
   pointSelectionMode?: "include" | "exclude";
   brushSize?: number;
@@ -31,25 +27,34 @@ interface UseOsdAnnotationsProps {
 
 export function useOsdAnnotations({
   osdViewer,
-  canvasStore,
+  storeApi,
   mode,
   pointSelectionMode = "include",
   brushSize = 10
 }: UseOsdAnnotationsProps) {
-  const {
-    flip,
-    rotation,
-    points,
-    overlays,
-    addPoint,
-    addOverlay
-  } = canvasStore;
-
+  const store = storeApi();
   // Local state for ephemeral brush strokes
   const [activeStroke, setActiveStroke] = useState<{
     id: string;
-    path: [number, number, number][];
+    path: [number, number][];
   } | null>(null);
+
+  // Track how many times handlers are set up
+  const setupCountRef = useRef(0);
+  
+  // Track if draw mode handlers are already attached
+  const drawHandlersAttachedRef = useRef(false);
+
+  const activeStrokeRef = useRef<{
+    id: string;
+    path: [number, number][];
+  } | null>(null);
+  
+  // keep the ref in sync with state
+  useEffect(() => {
+    activeStrokeRef.current = activeStroke;
+  }, [activeStroke]);
+
 
   const getImgPt = (e: OpenSeadragon.CanvasPressEvent | OpenSeadragon.CanvasDragEvent | OpenSeadragon.CanvasReleaseEvent | OpenSeadragon.CanvasClickEvent,
   ) => {
@@ -80,51 +85,66 @@ export function useOsdAnnotations({
    *    This effect DOES NOT redraw ephemeral strokes; it only registers event handlers.
    */
   useEffect(() => {
-    if (!osdViewer || mode !== "draw") return;
+    if (!osdViewer || mode !== "draw") {
+      drawHandlersAttachedRef.current = false;
+      return;
+    }
+    
+    // Prevent duplicate handlers
+    if (drawHandlersAttachedRef.current) {
+      return;
+    }
+    
+    setupCountRef.current += 1;
+    drawHandlersAttachedRef.current = true;
   
     // --- Handlers ---
     function handlePress(e: OpenSeadragon.CanvasPressEvent) {
       const imgPt = getImgPt(e);
       if (!imgPt) return;
+
       const strokeId = uuidv4();
-      setActiveStroke({ id: strokeId, path: [[imgPt.x, imgPt.y, 0.5]] });
+      const newStroke = { id: strokeId, path: [[imgPt.x, imgPt.y]] } as { id: string; path: [number, number][]; };
+
+      setActiveStroke(newStroke);          // local React state
+      activeStrokeRef.current = newStroke; // sync ref
     }
   
     function handleDrag(e: OpenSeadragon.CanvasDragEvent) {
-      setActiveStroke(old => {
-        if (!old || !osdViewer?.viewport) return null;
-        const imgPt = getImgPt(e);
-        if (!imgPt) return old;
-        return {
-          ...old,
-          path: [...old.path, [imgPt.x, imgPt.y, 0.5]],
-        };
+      const imgPt = getImgPt(e);
+      if (!imgPt) return;
+    
+      setActiveStroke((old) => {
+        if (!old) return null;
+        const next = { ...old, path: [...old.path, [imgPt.x, imgPt.y]] };
+        activeStrokeRef.current = next as { id: string; path: [number, number][]; };  // keep ref in sync
+        return next;
       });
     }
   
     function handleRelease(e: OpenSeadragon.CanvasReleaseEvent) {
-      if (!osdViewer?.viewport) return;
       const imgPt = getImgPt(e);
-      if (!imgPt) return;
+      if (!imgPt || !activeStrokeRef.current) return;
+    
+      // 1️⃣ read the final stroke **synchronously**
+      const { id: strokeId, path } = activeStrokeRef.current;
+      const imgPath = [...path, [imgPt.x, imgPt.y]];
 
-      setActiveStroke(old => {
-        if (!old) return null;
-        const strokeId = old.id;
-        const { path: imgPath } = old;
-        
-        // Finalize the stroke in your store
-        addOverlay({
-          id: strokeId,
-          data: { polygon: [...imgPath, [imgPt.x, imgPt.y, 0.5]] },
-          color: "red",
-          type: "brush_stroke",
-          fill: true,
-          visible: true,
-        });
-        
-        drawEphemeralStrokeInViewport(osdViewer, brushSize, []);
-        return null;
+      store.addOverlay({
+        id: strokeId,
+        data: { polygon: imgPath },
+        color: "red",
+        type: "brush_stroke",
+        fill: true,
+        visible: true,
       });
+    
+      // 3️⃣ clear local React state
+      setActiveStroke(null);
+      activeStrokeRef.current = null;
+    
+      // 4️⃣ clear the temporary drawing
+      drawEphemeralStrokeInViewport(osdViewer as OpenSeadragon.Viewer, brushSize, []);
     }
   
     // --- Attach them ---
@@ -134,6 +154,7 @@ export function useOsdAnnotations({
   
     // --- Cleanup ---
     return () => {
+      drawHandlersAttachedRef.current = false;
       osdViewer.removeHandler("canvas-press", handlePress);
       osdViewer.removeHandler("canvas-drag", handleDrag);
       osdViewer.removeHandler("canvas-release", handleRelease);
@@ -142,17 +163,21 @@ export function useOsdAnnotations({
     // If we did, we'd re-attach the handlers whenever the stroke changes.
   }, [osdViewer, mode, brushSize]);
 
-  // Each time the viewer changes or the “mode” changes, re-attach event handlers.
+  // Each time the viewer changes or the "mode" changes, re-attach event handlers.
   useEffect(() => {
     if (!osdViewer?.element) return;
-    // Clear relevant handlers
+    
+    // Clear existing click handlers for all modes
     osdViewer.removeAllHandlers("canvas-click");
-
+    
+    // Only add click handlers for shapes and points modes
     if (mode === "shapes" || mode === "points") {
       osdViewer.addHandler("canvas-click", e => {
         const imgPt = getImgPt(e);
-        if (!imgPt) return;
-        addPoint({
+        if (!imgPt) {
+          return;
+        }
+        store.addPoint({
           id: uuidv4(),
           x: imgPt.x,
           y: imgPt.y,
@@ -165,6 +190,7 @@ export function useOsdAnnotations({
         e.preventDefaultAction = true;
       });
     }
+    // For draw and navigate modes, no click handlers are added
   }, [
     osdViewer,
     mode,
@@ -178,7 +204,7 @@ export function useOsdAnnotations({
    */
   useEffect(() => {
     if (!osdViewer?.element) return;
-    if (mode === "draw" || mode === "shapes") {
+    if (mode === "draw" || mode === "shapes" || mode === "points") {
       const diameter = Math.max(brushSize, 10);
       const cursorUrl = getCursorSVG(diameter, 2, "red");
       osdViewer.element.style.cursor = `url(${cursorUrl}) ${diameter / 2} ${diameter / 2}, auto`;
@@ -204,6 +230,16 @@ export function useOsdAnnotations({
   // Whenever points, overlays, or flip/rotation change, re-draw everything
   useEffect(() => {
     if (!osdViewer) return;
-    addPointsAndOverlays(osdViewer, points, overlays);
-  }, [osdViewer, points, overlays, flip, rotation]);
+    
+    // Subscribe to store changes and redraw overlays
+    const unsubscribe = storeApi.subscribe((state: any) => {
+      addPointsAndOverlays(osdViewer, state.points, state.overlays);
+    });
+    
+    // Initial draw
+    const currentState = storeApi.getState();
+    addPointsAndOverlays(osdViewer, currentState.points, currentState.overlays);
+    
+    return unsubscribe;
+  }, [osdViewer, storeApi]);
 }

@@ -5,6 +5,16 @@ import shutil
 from mims.model_utils import get_concatenated_image
 from django.conf import settings
 import numpy as np
+from django.utils import timezone
+
+
+def get_mosaic_upload_path(instance, filename):
+    """
+    e.g. mims/mosaics/set_<set_pk>/<isotope>/mosaic_<ts>.tif
+    """
+    ts = timezone.now().strftime("%Y%m%dT%H%M%S")
+    iso = instance.isotope.replace(" ", "_")
+    return f"mims/mosaics/set_{instance.image_set.pk}/{iso}/mosaic_{ts}_{filename}"
 
 
 def get_mims_image_upload_path(instance, filename):
@@ -27,6 +37,8 @@ class MIMSImageSet(CanvasObj):
         Canvas, on_delete=models.CASCADE, related_name="mims_sets"
     )
     status = models.CharField(max_length=50, default="PREPROCESSING")
+
+    mask = models.FileField(upload_to="/mims_masks/", null=True, blank=True)
 
     def __str__(self):
         return f"{self.canvas.name} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
@@ -52,6 +64,13 @@ class MIMSImageSet(CanvasObj):
                 isotope = isotopes[0]
         return get_concatenated_image(self, isotope)
 
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["canvas"]),
+            models.Index(fields=["status"]),
+        ]
+
 
 class MIMSImage(CanvasObj):
     name = models.CharField(max_length=50, default="")
@@ -61,6 +80,7 @@ class MIMSImage(CanvasObj):
     )
     transform = models.JSONField(null=True, blank=True)
     image_set_priority = models.IntegerField(default=0)
+
     # Status options are:
     # - "PREPROCESSING" for not yet processed
     # - "PREPROCESSED" for processed and ready for alignment
@@ -75,6 +95,8 @@ class MIMSImage(CanvasObj):
     status = models.CharField(max_length=50, default="PREPROCESSING")
     file = models.FileField(upload_to=get_mims_image_upload_path)
     isotopes = models.ManyToManyField(Isotope)
+
+    registration_info = models.JSONField(null=True, blank=True)
 
     def __str__(self):
         filename = self.name if self.name else self.file.name.split("/")[-1]
@@ -125,6 +147,28 @@ class MimsTiffImage(AbstractBaseModel):
     def __str__(self):
         filename = self.name if self.name else self.image.name.split("/")[-1]
         return f"{self.mims_image.canvas.name} - {filename}"
+
+
+class MIMSOverlay(models.Model):
+    image_set = models.ForeignKey(
+        MIMSImageSet, on_delete=models.CASCADE, related_name="overlays"
+    )
+    isotope = models.ForeignKey(
+        Isotope, on_delete=models.CASCADE, related_name="overlays"
+    )
+    mosaic = models.FileField(upload_to=get_mosaic_upload_path)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.image_set.canvas.name} - {self.isotope.name} MIMS Mosaic"
+
+    class Meta:
+        unique_together = [("image_set", "isotope")]
+        ordering = ["isotope"]
+        indexes = [
+            models.Index(fields=["image_set"]),
+            models.Index(fields=["isotope"]),
+        ]
 
 
 class MIMSAlignment(AbstractBaseModel):

@@ -88,3 +88,6 @@ export const useMimsViewer = create<MimsViewerState>((set) => ({
       ),
     })),
 }))
+
+// Export the store API for components that need getState
+export const mimsViewerStore = useMimsViewer;

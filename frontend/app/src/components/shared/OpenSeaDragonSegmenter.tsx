@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import api from "../../api/api";
 import { useParams } from "@tanstack/react-router";
 import ControlledOpenSeaDragon from "./ControlledOpenSeaDragon";
 import { Pencil, MousePointer, Hexagon, Target } from "lucide-react";
 import { IconTooltip } from "./ui/tooltip";
 import { v4 as uuidv4 } from 'uuid';
+
 const OpenSeaDragonSegmenter = ({
   url,
   iiifContent,
@@ -19,12 +20,13 @@ const OpenSeaDragonSegmenter = ({
   const { mimsImageId } = useParams({ strict: false });
 
   const [isInclude, setIsInclude] = React.useState<boolean>(true);
-  const [mode, setMode] = useState<"shapes" | "draw" | "navigate" | "points">("shapes");
+  const [mode, setMode] = useState<"shapes" | "draw" | "navigate" | "points">("navigate");
   const [brushSize, setBrushSize] = React.useState(10);
 
   // -- Keydown event handler, extended for "brush_stroke" overlays --
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const currentState = canvasStore.getState()
       if (e.key === "i") {
         setIsInclude(true);
       } else if (e.key === "o") {
@@ -33,25 +35,25 @@ const OpenSeaDragonSegmenter = ({
       else if (e.key === "r") {
         // "r" => reset all segment suggestions AND brush strokes
         setIsInclude(true);
-        canvasStore.points.forEach((p: any) => (p.type !== "point_confirmed" ? canvasStore.removePoint(p.id) : null));
+        currentState.points.forEach((p: any) => (p.type !== "point_confirmed" ? currentState.removePoint(p.id) : null));
         // Remove suggestions
-        const suggestions = canvasStore.overlays.filter((o: any) => o.type === "suggestion");
-        suggestions.forEach((o: any) => canvasStore.removeOverlay(o.id));
+        const suggestions = currentState.overlays?.filter((o: any) => o.type === "suggestion");
+        suggestions.forEach((o: any) => currentState.removeOverlay(o.id));
 
         // Remove brush strokes
-        const brushStrokes = canvasStore.overlays.filter((o: any) => o.type === "brush_stroke");
-        brushStrokes.forEach((o: any) => canvasStore.removeOverlay(o.id));
+        const brushStrokes = currentState.overlays?.filter((o: any) => o.type === "brush_stroke");
+        brushStrokes.forEach((o: any) => currentState.removeOverlay(o.id));
       } 
       else if (e.key === " ") {
         // Prevent default spacebar scrolling
         e.preventDefault();
-        canvasStore.points.forEach((p: any) => (p.type !== "point_confirmed" ? canvasStore.removePoint(p.id) : null));
+        currentState.points.forEach((p: any) => (p.type !== "point_confirmed" ? currentState.removePoint(p.id) : null));
 
         // 1) Confirm any "suggestion" shape (existing logic)
-        const shape = canvasStore.overlays.find((p: any) => p.type === "suggestion");
+        const shape = currentState.overlays.find((p: any) => p.type === "suggestion");
         if (shape) {
-          canvasStore.removeOverlay(shape.id);
-          canvasStore.addOverlay({
+          currentState.removeOverlay(shape.id);
+          currentState.addOverlay({
             ...shape,
             color: "green",
             type: "shape_confirmed"
@@ -59,12 +61,12 @@ const OpenSeaDragonSegmenter = ({
         }
 
         // 2) Confirm all brush strokes => convert to polygons, color them green
-        const brushStrokes = canvasStore.overlays.filter((o: any) => o.type === "brush_stroke");
+        const brushStrokes = currentState.overlays?.filter((o: any) => o.type === "brush_stroke");
         brushStrokes.forEach((stroke: any) => {
           // Remove the stroke overlay
-          canvasStore.removeOverlay(stroke.id);
+          currentState.removeOverlay(stroke.id);
           // Add it as a new "shape_confirmed" overlay, green fill
-          canvasStore.addOverlay({
+          currentState.addOverlay({
             ...stroke,
             color: "green",
             type: "shape_confirmed"
@@ -72,10 +74,10 @@ const OpenSeaDragonSegmenter = ({
         });
 
         // 3) Confirm all points => convert to polygons, color them green
-        const points = canvasStore.points.filter((p: any) => p.type === "pending");
+        const points = currentState.points?.filter((p: any) => p.type === "pending");
         points.forEach((point: any) => {
-          canvasStore.removePoint(point.id);
-          canvasStore.addPoint({
+          currentState.removePoint(point.id);
+          currentState.addPoint({
             id: uuidv4(),
             x: point.x,
             y: point.y,
@@ -95,10 +97,11 @@ const OpenSeaDragonSegmenter = ({
 
   // -- If the user sets points (include/exclude clicks), call segmentation API --
   useEffect(() => {
-    const shapePoints = canvasStore.points.filter((p: any) => ["include", "exclude"].includes(p.type));
-    if (mode !== "shapes" || shapePoints.length === 0) return;
-    const point_coords = shapePoints.map((point: any) => [point.x, point.y]);
-    const point_labels = shapePoints.map((point: any) =>
+    const currentState = canvasStore.getState();
+    const shapePoints = currentState.points?.filter((p: any) => ["include", "exclude"].includes(p.type));
+    if (mode !== "shapes" || shapePoints?.length === 0) return;
+    const point_coords = shapePoints?.map((point: any) => [point.x, point.y]);
+    const point_labels = shapePoints?.map((point: any) =>
       point.type === "include" ? 1 : 0
     );
 
@@ -110,13 +113,14 @@ const OpenSeaDragonSegmenter = ({
       })
       .then(res => {
         // Remove old suggestions
-        canvasStore
+        const currentState = canvasStore.getState();
+        currentState
           .overlays
-          .filter((o: any) => o.type === "suggestion")
-          .forEach((o: any) => canvasStore.removeOverlay(o.id));
+          ?.filter((o: any) => o.type === "suggestion")
+          .forEach((o: any) => currentState.removeOverlay(o.id));
 
         // Add new suggestion
-        canvasStore.addOverlay({
+        currentState.addOverlay({
           id: uuidv4(),
           data: { polygon: res.data?.polygons[0] },
           fill: true,
@@ -124,7 +128,7 @@ const OpenSeaDragonSegmenter = ({
           type: "suggestion"
         });
       });
-  }, [canvasStore.points.length]);
+  }, [canvasStore.getState().points?.length]);
 
 
   return (

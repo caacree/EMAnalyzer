@@ -32,8 +32,10 @@ const MimsImageSetDetail = () => {
     queryFn: () => fetchCanvasDetail(canvasId as string),
   });
   const navigate = useNavigate({ from: window.location.pathname });
-  const canvasStore = useCanvasViewer();
-  const mimsStore = useMimsViewer();
+  const canvasStoreApi = useCanvasViewer;
+  const canvasStore = canvasStoreApi();
+  const mimsStoreApi = useMimsViewer;
+  const mimsStore = mimsStoreApi();
   const {setFlip: setMimsFlip, setRotation: setMimsRotation} = mimsStore;
   const [mode, setMode] = useState<"shapes" | "draw" | "navigate" | "points">("navigate");
   const points = {em: canvasStore.points, mims: mimsStore.points};
@@ -73,7 +75,6 @@ const MimsImageSetDetail = () => {
   }  
 
   const selectedMimsSet = canvas?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSet);
-  console.log(selectedMimsSet)
   return (
     <div className="flex">
       <CanvasMenu />
@@ -82,7 +83,7 @@ const MimsImageSetDetail = () => {
         <div className="flex w-1/2 max-w-1/2 min-h-[400px] grow">
           <ControlledOpenSeaDragon 
             iiifContent={image.dzi_file} 
-            canvasStore={canvasStore}
+            canvasStore={canvasStoreApi}
             mode={mode}
           />
         </div>
@@ -134,7 +135,7 @@ const MimsImageSetDetail = () => {
                         <ControlledOpenSeaDragon 
                           iiifContent={iiifContent}
                           url={url}
-                          canvasStore={mimsStore}
+                          canvasStore={mimsStoreApi}
                           mode={mode}
                         />
                       </div>
@@ -176,8 +177,12 @@ const MimsImageSetDetail = () => {
                 MIMS {index + 1}: {points.mims[index]?.x.toFixed(2)}, {points.mims[index]?.y.toFixed(2)}
               </div>
               <XCircleIcon onClick={() => {
-                canvasStore.removePoint(index);
-                mimsStore.removePoint(index);
+                if (points.em[index]) {
+                  canvasStore.removePoint(points.em[index].id);
+                }
+                if (points.mims[index]) {
+                  mimsStore.removePoint(points.mims[index].id);
+                }
               }} className="cursor-pointer" />
             </div>
           )})}

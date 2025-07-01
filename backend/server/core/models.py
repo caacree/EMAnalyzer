@@ -29,6 +29,7 @@ class Canvas(AbstractBaseModel):
     width = models.IntegerField(null=True)
     height = models.IntegerField(null=True)
     pixel_size_nm = models.FloatField(blank=True, null=True)
+    shape = models.JSONField(null=True)
 
     def __str__(self):
         return self.name or self.id

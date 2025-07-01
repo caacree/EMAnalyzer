@@ -34,6 +34,8 @@ def _as_int(v):
 
 
 def load_shapes(mims_image):
+    if mims_image.registration_info:
+        return mims_image.registration_info
     mims_path = Path(mims_image.file.path)
     shapes_json_path = Path(
         mims_path.parent / mims_path.stem / "registration" / "reg_shapes.json"
@@ -66,8 +68,12 @@ def validate_mims_image(mims_image_id):
     json_shapes = load_shapes(mims_image)
     em_shapes = [np.array(s, dtype=float) for s in json_shapes.get("em_shapes", [])]
     mims_shapes = [np.array(s, dtype=float) for s in json_shapes.get("mims_shapes", [])]
-    em_pts = [np.array(s, dtype=float) for s in json_shapes.get("em_points", [])]
-    mims_pts = [np.array(s, dtype=float) for s in json_shapes.get("mims_points", [])]
+    em_pts = json_shapes.get("em_points", [])
+    em_pts = [[p[1], p[0]] for p in em_pts]
+    em_pts = [np.array(s, dtype=float) for s in em_pts]
+    mims_pts = json_shapes.get("mims_points", [])
+    mims_pts = [[p[1], p[0]] for p in mims_pts]
+    mims_pts = [np.array(s, dtype=float) for s in mims_pts]
     em_shapes = [
         s for s in em_shapes if s.ndim == 2 and s.shape[0] >= 3 and s.shape[1] >= 2
     ]
@@ -122,9 +128,13 @@ def register_images(mims_image_obj_id):
     start_time = time.time()
 
     # ---------- 0. objects & basic geometry ------------------------
-    mims_img, em_shapes, mims_shapes, em_pts, mims_pts = validate_mims_image(
-        mims_image_obj_id
-    )
+    try:
+        mims_img, em_shapes, mims_shapes, em_pts, mims_pts = validate_mims_image(
+            mims_image_obj_id
+        )
+    except Exception as e:
+        print(e)
+        return False
     h_mims, w_mims = get_mims_dims(mims_img)
 
     # ---------- 1. coarse similarity (with optional mirror) --------
@@ -146,6 +156,9 @@ def register_images(mims_image_obj_id):
     for mp, ep in zip(mims_shapes, em_shapes):
         mims_stack = np.vstack([mims_stack, polygon_centroid(mp)])
         em_stack = np.vstack([em_stack, polygon_centroid(ep)])
+    for mp, ep in zip(mims_pts, em_pts):
+        mims_stack = np.vstack([mims_stack, mp])
+        em_stack = np.vstack([em_stack, ep])
 
     #   2a. Initial affine prediction --------------------------------------
     mims_pred = base_tf(mims_stack.copy())
@@ -223,26 +236,61 @@ def register_images(mims_image_obj_id):
     mims_img.save(update_fields=["canvas_bbox"])
     output_shape = [int(max_xy[1] - min_xy[1]), int(max_xy[0] - min_xy[0])]
 
+    for tiff in mims_img.mims_tiff_images.all():
+        tiff.image.delete(save=False)
+        tiff.delete()
+    mims_img.mims_tiff_images.all().delete()
     t0 = time.time()
     for iso in mims_img.isotopes.all():
-        print("Unwarping", iso.name)
-        iso_img = image_from_im_file(mims_img.file.path, iso.name, autocontrast=False)
+        # ------------ 1. read + optional flip -------------------------
+        src = image_from_im_file(mims_img.file.path, iso.name, autocontrast=False)
         if needs_flip:
-            iso_img = iso_img[:, ::-1]
-        iso_img = warp(iso_img, mims_tf.inverse, output_shape=output_shape)
-        iso_img = warp(iso_img, tps, output_shape=output_shape)
-        iso_img = cv2.resize(iso_img, (y1 - y0, x1 - x0))
+            src = src[:, ::-1]
+
+        # ------------ 2. warp intensity image -------------------------
+        img = warp(src, mims_tf.inverse, output_shape=output_shape, preserve_range=True)
+        img = warp(img, tps, output_shape=output_shape, preserve_range=True)
+
+        # ------------ 3. build alpha mask (warp of ones) --------------
+        ones = np.ones_like(src, dtype=np.uint8)
+        mask = warp(
+            ones,
+            mims_tf.inverse,
+            output_shape=output_shape,
+            order=0,
+            cval=0,
+            preserve_range=True,
+        )
+        mask = warp(
+            mask, tps, output_shape=output_shape, order=0, cval=0, preserve_range=True
+        )
+
+        # ------------ 4. crop / resize both the same ------------------
+        img = cv2.resize(img, (y1 - y0, x1 - x0), interpolation=cv2.INTER_LINEAR)
+        mask = cv2.resize(mask, (y1 - y0, x1 - x0), interpolation=cv2.INTER_NEAREST)
+
+        # ------------ 5. build 4-channel BGRA array -------------------
+        img_u8 = np.clip(img, 0, 255).astype(np.uint8)
+        alpha = (mask > 0.5).astype(np.uint8) * 255  # 0 or 255
+        rgba = cv2.merge([img_u8, img_u8, img_u8, alpha])
+
+        # ------------ 6. write lossless PNG ---------------------------
         reg_loc = Path(mims_img.file.path).with_suffix("") / "registration"
         out_path = reg_loc / f"{iso.name}_unwarped.png"
-        cv2.imwrite(str(out_path), iso_img, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+        cv2.imwrite(
+            str(out_path), rgba, [cv2.IMWRITE_PNG_COMPRESSION, 0]
+        )  # 0 = no compression
+
+        # ------------ 7. store in DB, then delete temp ---------------
         with open(out_path, "rb") as fh:
-            MimsTiffImage.objects.create(
+            tiff = MimsTiffImage.objects.create(
                 mims_image=mims_img,
                 image=File(fh, name=out_path.name),
                 name=f"{iso.name}",
                 registration_bbox=mims_img.canvas_bbox,
             )
-        os.remove(out_path)
+            print(tiff.image.path)
+        out_path.unlink()
     print("unwarp time:", round(time.time() - t0, 1), "s")
 
     mims_img.status = "DEWARPED_ALIGNED"

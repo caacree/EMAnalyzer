@@ -33,6 +33,7 @@ export const drawPolygonOrBboxOverlay = (viewer: OpenSeadragon.Viewer, overlay: 
     "style",
     "position:absolute;overflow:visible;pointer-events:none;z-index:1;width:100%;height:100%;"
   );
+  svgEl.setAttribute("pointer-events", "none");
   const polyline = document.createElementNS(svgNS, "polyline");
 
   // Connect all points + close the shape

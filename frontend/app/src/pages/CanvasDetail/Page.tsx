@@ -19,7 +19,7 @@ const CanvasDetail = () => {
     queryKey: ['canvas', canvasId as string],
     queryFn: () => fetchCanvasDetail(canvasId as string),
   });
-  const canvasStore = useCanvasViewer();
+  const canvasStore = useCanvasViewer;
   const image = canvas?.images?.[0];
 
   if (isLoading) {

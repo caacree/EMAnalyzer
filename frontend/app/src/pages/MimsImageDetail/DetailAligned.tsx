@@ -1,9 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import api, { get_mims_image_dewarped_url } from "@/api/api";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/shared/ui/tabs";
 import { useCanvasViewer } from "@/stores/canvasViewer";
 import { useMimsViewer } from "@/stores/mimsViewer";
 import ControlledOpenSeaDragon from "@/components/shared/ControlledOpenSeaDragon";
@@ -17,12 +16,14 @@ const fetchMimsImageDetail = async (id: string) => {
 };
 
 const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolean, setIsRegistering: (isRegistering: boolean) => void}) => {
-  const canvasStore = useCanvasViewer();
-  const mimsStore = useMimsViewer();
+  const canvasStoreApi = useCanvasViewer;
+  const canvasStore = canvasStoreApi();
+  const mimsStoreApi = useMimsViewer;
+  const mimsStore = mimsStoreApi();
   const { setCoordinates: setEmCoordinates } = canvasStore;
   const { setFlip: setMimsFlip, setRotation: setMimsRotation } = mimsStore;
   const [openseadragonOptions, setOpenseadragonOptions] = useState<any>({defaultZoomLevel: 1});
-  const [selectedIsotope, setSelectedIsotope] = useState("EM");
+  const [selectedIsotopes, setSelectedIsotopes] = useState<string[]>(["EM"]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isRatioDialogOpen, setIsRatioDialogOpen] = useState(false);
 
@@ -43,7 +44,7 @@ const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolea
       
       setMimsFlip(mimsImage?.image_set?.flip);
       setMimsRotation(mimsImage?.image_set?.flip ? mimsImage?.image_set?.rotation_degrees : 360 - mimsImage?.image_set?.rotation_degrees);
-      setSelectedIsotope("EM");
+      setSelectedIsotopes(["EM"]);
       
       // Set coordinates from registration_bbox of the first mims_tiff_image if available
       if (mimsImage?.mims_tiff_images?.length > 0 && mimsImage.mims_tiff_images[0].registration_bbox) {
@@ -57,21 +58,41 @@ const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolea
       }
     }
   }, [mimsImage]);
-  
-  
+
+  const toggleIsotope = useCallback((isotopeName: string) => {
+    setSelectedIsotopes(prev => {
+      if (prev.includes(isotopeName)) {
+        // Don't allow removing EM if it's the only selected isotope
+        if (isotopeName === "EM" && prev.length === 1) {
+          return prev;
+        }
+        return prev.filter(name => name !== isotopeName);
+      } else {
+        return [...prev, isotopeName];
+      }
+    });
+  }, []);
 
   const getDownloadUrl = useCallback(() => {
-    if (!mimsImage || selectedIsotope === "EM") return get_mims_image_dewarped_url(mimsImage, {name: "EM", id: "EM"});
+    if (!mimsImage || selectedIsotopes.length === 0) return "";
     
-    // Find the currently selected tiff image
-    const selectedTiffImage = mimsImage.mims_tiff_images.find((img: any) => img.name === selectedIsotope);
+    // If only EM is selected, return EM download URL
+    if (selectedIsotopes.length === 1 && selectedIsotopes[0] === "EM") {
+      return get_mims_image_dewarped_url(mimsImage, {name: "EM", id: "EM"});
+    }
     
-    if (selectedTiffImage) {
-      return get_mims_image_dewarped_url(mimsImage, selectedTiffImage);
+    // For multiple selections, we'll need to handle this differently
+    // For now, return the first non-EM isotope URL
+    const nonEmIsotopes = selectedIsotopes.filter(name => name !== "EM");
+    if (nonEmIsotopes.length > 0) {
+      const selectedTiffImage = mimsImage.mims_tiff_images.find((img: any) => img.name === nonEmIsotopes[0]);
+      if (selectedTiffImage) {
+        return get_mims_image_dewarped_url(mimsImage, selectedTiffImage);
+      }
     }
     
     return "";
-  }, [mimsImage, mimsImageId, selectedIsotope]);
+  }, [mimsImage, selectedIsotopes]);
   
   // Function to handle download
   const handleDownload = useCallback(async () => {
@@ -88,7 +109,8 @@ const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolea
       
       // Create a temporary download link
       const downloadLink = document.createElement('a');
-      const filename = `${mimsImage?.name || mimsImage?.file?.split('/').pop().split('.')[0]}_${selectedIsotope}.png`;
+      const isotopeNames = selectedIsotopes.join('_');
+      const filename = `${mimsImage?.name || mimsImage?.file?.split('/').pop().split('.')[0]}_${isotopeNames}.png`;
       
       // Create a blob URL and set it as the href
       downloadLink.href = URL.createObjectURL(blob);
@@ -103,11 +125,68 @@ const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolea
     } finally {
       setIsDownloading(false);
     }
-  }, [getDownloadUrl, mimsImage, selectedIsotope]);
+  }, [getDownloadUrl, mimsImage, selectedIsotopes]);
+
+  // Prepare data for ControlledOpenSeaDragon
+  const openSeaDragonData = useMemo(() => {
+    if (!mimsImage) return { iiifContent: undefined, positionedImages: undefined };
+    
+    const hasEm = selectedIsotopes.includes("EM");
+    const selectedTiffImages = mimsImage.mims_tiff_images?.filter((img: any) => 
+      selectedIsotopes.includes(img.name)
+    ) || [];
+    
+    // Create positioned images data with registration_bbox information
+    const positionedImages = selectedTiffImages.map((tiffImage: any) => {
+      const imageUrl = `${api.defaults.baseURL}mims_image/${mimsImageId}/unwarped/${tiffImage.id}/image.png`;
+      
+      // Calculate bounds from registration_bbox
+      let bounds = null;
+      if (tiffImage.registration_bbox) {
+        const bbox = tiffImage.registration_bbox;
+        // registration_bbox format: [[top_left_x, top_left_y], [top_right_x, top_right_y], [bottom_right_x, bottom_right_y], [bottom_left_x, bottom_left_y]]
+        
+        // Find the bounding rectangle that encompasses all 4 points
+        const xCoords = bbox.map((point: number[]) => point[0]);
+        const yCoords = bbox.map((point: number[]) => point[1]);
+        
+        const minX = Math.min(...xCoords);
+        const maxX = Math.max(...xCoords);
+        const minY = Math.min(...yCoords);
+        const maxY = Math.max(...yCoords);
+        
+        // Convert to OpenSeaDragon bounds format: [x, y, width, height]
+        // Using the EM image dimensions for normalization
+        const emWidth = mimsImage.image_set?.canvas?.width || 1;
+        const emHeight = mimsImage.image_set?.canvas?.height || 1;
+        
+        bounds = [
+          minX / emWidth,           // x (normalized)
+          minY / emHeight,          // y (normalized)
+          (maxX - minX) / emWidth,  // width (normalized)
+          (maxY - minY) / emHeight  // height (normalized)
+        ];
+      }
+      
+      return {
+        url: imageUrl,
+        name: tiffImage.name,
+        bounds: bounds
+      };
+    });
+    
+    return {
+      iiifContent: hasEm ? mimsImage.em_dzi : undefined,
+      positionedImages: positionedImages.length > 0 ? positionedImages : undefined
+    };
+  }, [mimsImage, selectedIsotopes, mimsImageId]);
 
   if (!mimsImage) {
     return <div>Loading...</div>;
   }
+
+  const { iiifContent, positionedImages } = openSeaDragonData;
+  
 
   return (
     <div className="flex flex-col w-screen max-w-screen m-4 mb-5 relative">
@@ -141,15 +220,32 @@ const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolea
       </div>
       <div className="mt-2 mb-8 flex grow">
         <div className="flex grow">
-          <Tabs value={selectedIsotope} className="flex flex-col grow min-h-[600px] justify-center">
-            <TabsList className="flex space-x-1">
-              <TabsTrigger key="EM" value="EM" onClick={() => setSelectedIsotope("EM")}>
+          <div className="flex flex-col grow min-h-[600px] justify-center">
+            <div className="flex space-x-1 mb-4">
+              <button 
+                onClick={() => toggleIsotope("EM")}
+                className={cn(
+                  "px-3 py-1 rounded border-2 transition-colors",
+                  selectedIsotopes.includes("EM") 
+                    ? "bg-blue-500 text-white border-blue-500" 
+                    : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                )}
+              >
                 EM
-              </TabsTrigger>
+              </button>
               {mimsImage?.mims_tiff_images?.map((tiffImage: any) => (
-                <TabsTrigger key={tiffImage.id} value={tiffImage.name} onClick={() => setSelectedIsotope(tiffImage.name)}>
+                <button
+                  key={tiffImage.id}
+                  onClick={() => toggleIsotope(tiffImage.name)}
+                  className={cn(
+                    "px-3 py-1 rounded border-2 transition-colors",
+                    selectedIsotopes.includes(tiffImage.name) 
+                      ? "bg-blue-500 text-white border-blue-500" 
+                      : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                  )}
+                >
                   {tiffImage.name}
-                </TabsTrigger>
+                </button>
               ))}
               <button 
                 onClick={(e) => {
@@ -169,30 +265,17 @@ const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolea
               >
                 {isRegistering ? "Stop Registering" : "Adjust Registration"}
               </button>
-            </TabsList>
-            <TabsContent value="EM" className={cn("flex flex-col", selectedIsotope === "EM" ? "grow" : "hidden")}>
+            </div>
+            <div className="min-h-[600px] flex flex-col grow">
               <ControlledOpenSeaDragon 
-                iiifContent={`${mimsImage?.em_dzi}`}
-                canvasStore={canvasStore}
+                key={`${mimsImageId}-${selectedIsotopes.join('-')}`}
+                iiifContent={iiifContent}
+                positionedImages={positionedImages}
+                canvasStore={canvasStoreApi}
                 mode="navigate"
               />
-            </TabsContent>
-            {mimsImage?.mims_tiff_images?.map((tiffImage: any) => {
-              const isActive = selectedIsotope === tiffImage.name;
-              const image = tiffImage.image;
-              return (
-                <TabsContent key={tiffImage.id} value={tiffImage.name} className={cn("flex flex-col", isActive ? "grow" : "hidden")}>
-                  <div className="min-h-[600px] flex flex-col grow">
-                    <ControlledOpenSeaDragon 
-                    url={`${image}`}
-                    canvasStore={mimsStore}
-                    mode="navigate"
-                  />
-                  </div>
-                </TabsContent>
-              );
-            })}
-          </Tabs>
+            </div>
+          </div>
         </div>
       </div>
       {mimsImage && (
