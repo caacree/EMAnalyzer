@@ -30,5 +30,5 @@ class CanvasViewSet(viewsets.ModelViewSet):
             os.makedirs(canvas_folder)
         for image in canvas.images.all():
             image_path = os.path.join(canvas_folder, str(image.id))
-            # convert_to_dzi_format.delay(image.id, image_path)
+            convert_to_dzi_format.delay(image.id, image_path)
         return Response(status=status.HTTP_200_OK)

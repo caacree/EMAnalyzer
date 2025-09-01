@@ -25,13 +25,20 @@ const CanvasDetail = () => {
   if (isLoading) {
     return <p>Loading...</p>;
   }
+  //reduce them into a single array of objects with url, name, bounds
+  const geotiffs = canvas?.mims_sets?.map(i => i.mims_overlays.map(o => ({
+    url: o.mosaic,
+    name: o.isotope,
+    bounds: i.canvas_bbox
+  }))).flat();
 
   return (
     <div className="flex grow">
       <CanvasMenu />
       <div className="flex-1 flex flex-col gap-5 p-5 grow">
         <ControlledOpenSeaDragon 
-          iiifContent={image.dzi_file} 
+          iiifContent={image.dzi_file}
+          geotiffs={geotiffs}
           canvasStore={canvasStore}
           mode="navigate"
         />

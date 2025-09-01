@@ -9,6 +9,15 @@ const keyOf = (src?: string | string[]) =>
 interface Props {
   iiifContent?: string;
   url?: string | string[];
+  geotiffs?: Array<{
+    url: string;
+    name: string;
+    bounds: number[] | null;
+    color?: {
+      hueRotateDeg: number;
+      saturateFactor: number;
+    };
+  }>;
   positionedImages?: Array<{
     url: string;
     name: string;
@@ -21,6 +30,7 @@ interface Props {
 export function useOpenSeadragonViewer({
   iiifContent,
   url,
+  geotiffs,
   positionedImages,
   mode = "navigate",
   canvasStore,
@@ -118,6 +128,7 @@ export function useOpenSeadragonViewer({
         minZoomLevel: 0.1,
         maxZoomLevel: 100,
         visibilityRatio: 0.1,
+        drawer: 'canvas'
       };
 
       osdRef.current = OpenSeadragon(config);
@@ -202,7 +213,7 @@ export function useOpenSeadragonViewer({
   }, [storeState.flip, storeState.rotation, isViewerInitialized]);
 
   /* ------------------------------------------------------------------ 5. rebuild WORLD when sources change */
-  const srcKey = `${iiifContent ?? ""}|${keyOf(url)}|${positionedImages ? positionedImages.map(img => img.url).join("|") : ""}`;
+  const srcKey = `${iiifContent ?? ""}|${keyOf(url)}|${positionedImages ? positionedImages.map(img => img.url).join("|") : ""}|${geotiffs ? geotiffs.map(img => img.url).join("|") : ""}`;
   useEffect(() => {
     // Add a small delay to prevent rapid rebuilds
     const timeoutId = setTimeout(() => {
@@ -235,7 +246,7 @@ export function useOpenSeadragonViewer({
         refImgRef.current = null;                // reset canonical
 
         // If no valid sources, add a placeholder to prevent bounds issues
-        if (sources.length === 0 && (!positionedImages || positionedImages.length === 0)) {
+        if (sources.length === 0 && (!positionedImages || positionedImages.length === 0) && (!geotiffs || geotiffs.length === 0)) {
           console.warn("No valid sources found, adding placeholder image");
           // Create a 1x1 transparent pixel as a placeholder
           const canvas = document.createElement('canvas');
@@ -266,7 +277,6 @@ export function useOpenSeadragonViewer({
         // Add base layers (iiifContent and url) first
         sources.forEach((src, index) => {
           const tileSourceSpec = (src as any).tileSource ?? src; // ← unwrap once
-
           v.addTiledImage({
             tileSource: tileSourceSpec,
             crossOriginPolicy: "Anonymous",
@@ -278,15 +288,6 @@ export function useOpenSeadragonViewer({
                 const currentRotation = storeState.rotation;
                 event.item.setFlip(currentFlip);
                 event.item.setRotation(-currentRotation);
-                
-                // Check the bounds of the loaded image
-                const bounds = event.item.getBounds();
-                
-                // Check viewport bounds after image is loaded
-                const viewportBounds = v.viewport.getBounds();
-                
-                // For the EM image (background), just let it display normally
-                // Don't try to fit it to the viewport since it's the base layer
               }
             },
             error: (event: any) => {
@@ -295,38 +296,68 @@ export function useOpenSeadragonViewer({
           });
         });
 
+
         // Add positioned images on top
-        if (positionedImages) {
+        if (positionedImages || geotiffs) {
           // Wait for the base image to be loaded before adding positioned images
           const addPositionedImages = () => {
             if (v.world.getItemCount() === 0 || isDestroyedRef.current) {
               setTimeout(addPositionedImages, 100); // Retry after 100ms
               return;
             }
-            
-            positionedImages.forEach((positionedImage) => {
-              const tileSourceSpec = { type: "image", url: positionedImage.url, buildPyramid: true } as any;
-              
+            const allTileSourceSpecs: any[] = [];
+            geotiffs?.forEach(async (geotiff: any) => {
+              allTileSourceSpecs.push({
+                url: `http://localhost:8000${geotiff.url}`, 
+                bounds: geotiff.bounds});
+            })
+            allTileSourceSpecs.forEach((tileSourceSpec: any) => {
               const addImageOptions: any = {
-                tileSource: tileSourceSpec,
+                tileSource: tileSourceSpec.url,
                 crossOriginPolicy: "Anonymous",
                 error: (event: any) => {
-                  console.error("Failed to load positioned image:", positionedImage.url, event);
-                }
+                  console.error("Failed to load positioned image:", tileSourceSpec.url);
+                  console.log(event);
+                },
+                /*success: (event: any) => {
+                  const items = [];
+                  for (let i = 0; i < v.world.getItemCount(); i++) {
+                    if (i > 0) {
+                      items.push(v.world.getItemAt(i));
+                    }
+                  }
+                  const procs = [
+                    OpenSeadragon.Filters.INVERT(),
+                    OpenSeadragon.Filters.COLORMAP([
+                      [0, 0,  0],
+                      [0, 128, 0],
+                      [0, 250,  0],
+                      [0, 255, 0]], 128),
+                  ];
+                  console.log(OpenSeadragon.Filters)
+                  v.setFilterOptions({
+                    filters: [{ items: items, processors: procs }]
+                  });
+                },*/
               };
 
               // Use x, y, width, and height parameters for positioning and sizing
-              if (positionedImage.bounds) {
-                const [x, y, width, height] = positionedImage.bounds;
+              if (tileSourceSpec.bounds) {
+                const [tl, bl, br, tr] = tileSourceSpec.bounds;
+                const x = tl[0];
+                const y = tl[1];
+                const width = br[0] - x;
+                const height = br[1] - y;
                 
                 // Validate bounds to prevent zero dimensions
-                if (width <= 0 || height <= 0) {
-                  console.warn("Invalid bounds for positioned image:", positionedImage.name, positionedImage.bounds);
+                if (width <= 0 || height <= 0 || x < 0 || y < 0) {
+                  console.warn("Invalid bounds for positioned image:", tileSourceSpec.name, tileSourceSpec.bounds);
                   return;
                 }
                 
                 // Get base image bounds for coordinate conversion
                 const baseImage = v.world.getItemAt(0);
+                const {x: baseImgWidth, y: baseImgHeight} = baseImage.getContentSize();
                 
                 if (baseImage) {
                   const baseBounds = baseImage.getBounds();
@@ -339,9 +370,9 @@ export function useOpenSeadragonViewer({
                   
                   // The base image might already be at (0,0), so we might not need to add baseBounds.x/y
                   // Let's try using just the normalized coordinates multiplied by the base image dimensions
-                  const viewportX = x * baseBounds.width;
-                  const viewportY = y * baseBounds.height; // No inversion needed
-                  const viewportWidth = width * baseBounds.width;
+                  const viewportX = (x / baseImgWidth);
+                  const viewportY = y / baseImgHeight; // No inversion needed
+                  const viewportWidth = width / baseImgWidth;
                   // Note: OpenSeaDragon doesn't support both width and height, so we'll use just width
                   
                   addImageOptions.x = viewportX;
@@ -354,7 +385,7 @@ export function useOpenSeadragonViewer({
                   addImageOptions.width = width;
                 }
               }
-
+              addImageOptions
               v.addTiledImage(addImageOptions);
             });
           };
@@ -365,12 +396,12 @@ export function useOpenSeadragonViewer({
       } catch (error) {
         console.error("Error rebuilding OpenSeaDragon world:", error);
       }
-    }, 50); // 50ms debounce
+    }, 50);
 
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [srcKey, positionedImages, isViewerInitialized, iiifContent, url]);
+  }, [srcKey, positionedImages, geotiffs, isViewerInitialized, iiifContent, url]);
 
   /* ------------------------------------------------------------------ helpers */
   const setLayerOpacity = useCallback((i: number, o: number) => {

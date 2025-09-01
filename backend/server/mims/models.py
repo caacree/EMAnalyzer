@@ -13,8 +13,16 @@ def get_mosaic_upload_path(instance, filename):
     e.g. mims/mosaics/set_<set_pk>/<isotope>/mosaic_<ts>.tif
     """
     ts = timezone.now().strftime("%Y%m%dT%H%M%S")
-    iso = instance.isotope.replace(" ", "_")
+    iso = instance.isotope.name.replace(" ", "_")
     return f"mims/mosaics/set_{instance.image_set.pk}/{iso}/mosaic_{ts}_{filename}"
+
+
+def get_mask_upload_path(instance, filename):
+    """
+    e.g. mims/masks/set_<pk>/<timestamp>.tif
+    """
+    ts = timezone.now().strftime("%Y%m%dT%H%M%S")
+    return f"mims/masks/set_{instance.pk}/{ts}_{filename}"
 
 
 def get_mims_image_upload_path(instance, filename):
@@ -38,7 +46,7 @@ class MIMSImageSet(CanvasObj):
     )
     status = models.CharField(max_length=50, default="PREPROCESSING")
 
-    mask = models.FileField(upload_to="/mims_masks/", null=True, blank=True)
+    mask = models.FileField(upload_to=get_mask_upload_path, null=True, blank=True)
 
     def __str__(self):
         return f"{self.canvas.name} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"

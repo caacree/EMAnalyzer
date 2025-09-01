@@ -1,10 +1,14 @@
 import React from "react";
 import { useOpenSeadragonViewer } from "@/hooks/useOpenSeaDragonViewer";
 import { useOsdAnnotations } from "@/hooks/useOsdAnnotations";
-
 interface ControlledOpenSeaDragonProps {
   iiifContent?: string;
   url?: string;
+  geotiffs?: Array<{
+    url: string;
+    name: string;
+    bounds: number[] | null;
+  }>;
   positionedImages?: Array<{
     url: string;
     name: string;
@@ -19,6 +23,7 @@ interface ControlledOpenSeaDragonProps {
 const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
   iiifContent,
   url,
+  geotiffs,
   positionedImages,
   canvasStore,
   mode = "shapes",
@@ -30,6 +35,7 @@ const ControlledOpenSeaDragon: React.FC<ControlledOpenSeaDragonProps> = ({
   const { viewerRef, osdViewer, isContainerReady, isViewerInitialized } = useOpenSeadragonViewer({
     iiifContent,
     url,
+    geotiffs,
     positionedImages,
     mode,
     canvasStore

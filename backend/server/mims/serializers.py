@@ -4,7 +4,14 @@ from rest_framework import serializers
 from django.conf import settings
 import os
 from image.models import Image
-from mims.models import MIMSImageSet, MIMSImage, Isotope, MIMSAlignment, MimsTiffImage
+from mims.models import (
+    MIMSImageSet,
+    MIMSImage,
+    Isotope,
+    MIMSAlignment,
+    MIMSOverlay,
+    MimsTiffImage,
+)
 from pathlib import Path
 
 
@@ -40,8 +47,20 @@ class IsotopeImageSerializer(serializers.ModelSerializer):
         return url
 
 
+class MIMSOverlaySerializer(serializers.ModelSerializer):
+    isotope = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MIMSOverlay
+        fields = ["id", "isotope", "mosaic"]
+
+    def get_isotope(self, obj):
+        return obj.isotope.name
+
+
 class MIMSImageSetSerializer(serializers.ModelSerializer):
     composite_images = serializers.SerializerMethodField()
+    mims_overlays = serializers.SerializerMethodField()
 
     class Meta:
         model = MIMSImageSet
@@ -58,6 +77,7 @@ class MIMSImageSetSerializer(serializers.ModelSerializer):
             "canvas_bbox",
             "pixel_size_nm",
             "mims_images",
+            "mims_overlays",
         ]
 
     def get_composite_images(self, obj):
@@ -85,6 +105,9 @@ class MIMSImageSetSerializer(serializers.ModelSerializer):
             for isotope_name in composite_images
         }
         return composite_images
+
+    def get_mims_overlays(self, obj):
+        return MIMSOverlaySerializer(obj.overlays.all(), many=True).data
 
 
 # New serializer for MIMSAlignment

@@ -84,7 +84,7 @@ const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolea
     // For multiple selections, we'll need to handle this differently
     // For now, return the first non-EM isotope URL
     const nonEmIsotopes = selectedIsotopes.filter(name => name !== "EM");
-    if (nonEmIsotopes.length > 0) {
+    if (nonEmIsotopes?.length > 0) {
       const selectedTiffImage = mimsImage.mims_tiff_images.find((img: any) => img.name === nonEmIsotopes[0]);
       if (selectedTiffImage) {
         return get_mims_image_dewarped_url(mimsImage, selectedTiffImage);
@@ -135,9 +135,18 @@ const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolea
     const selectedTiffImages = mimsImage.mims_tiff_images?.filter((img: any) => 
       selectedIsotopes.includes(img.name)
     ) || [];
+    console.log(mimsImage)
+
+    const geotiffs = mimsImage.mims_overlays?.map((overlay: any) => {
+      return {
+        url: overlay.mosaic,
+        name: overlay.isotope,
+        bounds: mimsImage?.image_set?.canvas_bbox
+      };
+    });
     
     // Create positioned images data with registration_bbox information
-    const positionedImages = selectedTiffImages.map((tiffImage: any) => {
+    const positionedImages = selectedTiffImages?.map((tiffImage: any) => {
       const imageUrl = `${api.defaults.baseURL}mims_image/${mimsImageId}/unwarped/${tiffImage.id}/image.png`;
       
       // Calculate bounds from registration_bbox
@@ -177,7 +186,8 @@ const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolea
     
     return {
       iiifContent: hasEm ? mimsImage.em_dzi : undefined,
-      positionedImages: positionedImages.length > 0 ? positionedImages : undefined
+      positionedImages: positionedImages?.length > 0 ? positionedImages : undefined,
+      geotiffs: geotiffs?.length > 0 ? geotiffs : undefined
     };
   }, [mimsImage, selectedIsotopes, mimsImageId]);
 

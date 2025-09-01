@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from mims.models import MIMSImageSet
+from mims.models import MIMSImageSet, MIMSOverlay
 from core.models import Canvas
 import os
 from pathlib import Path
@@ -22,8 +22,20 @@ class CanvasListSerializer(serializers.ModelSerializer):
         ]
 
 
+class MimsOverlaySerializer(serializers.ModelSerializer):
+    isotope = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MIMSOverlay
+        fields = ["id", "isotope", "mosaic"]
+
+    def get_isotope(self, obj):
+        return obj.isotope.name
+
+
 class MimsImageSetCanvasDetailSerializer(serializers.ModelSerializer):
     composite_images = serializers.SerializerMethodField()
+    mims_overlays = serializers.SerializerMethodField()
 
     class Meta:
         model = MIMSImageSet
@@ -40,6 +52,7 @@ class MimsImageSetCanvasDetailSerializer(serializers.ModelSerializer):
             "canvas_bbox",
             "pixel_size_nm",
             "mims_images",
+            "mims_overlays",
         ]
 
     def get_composite_images(self, obj):
@@ -72,6 +85,9 @@ class MimsImageSetCanvasDetailSerializer(serializers.ModelSerializer):
             else None
         )
         return composite_images
+
+    def get_mims_overlays(self, obj):
+        return MimsOverlaySerializer(obj.overlays.all(), many=True).data
 
 
 class CanvasDetailSerializer(serializers.ModelSerializer):
