@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import api, { get_mims_image_dewarped_url } from "@/api/api";
+import api, { get_mims_image_dewarped_url, BASE_URL, buildMediaURL } from "@/api/api";
 import { useCanvasViewer } from "@/stores/canvasViewer";
 import { useMimsViewer } from "@/stores/mimsViewer";
 import ControlledOpenSeaDragon from "@/components/shared/ControlledOpenSeaDragon";
@@ -46,13 +46,13 @@ const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolea
       setMimsRotation(mimsImage?.image_set?.flip ? mimsImage?.image_set?.rotation_degrees : 360 - mimsImage?.image_set?.rotation_degrees);
       setSelectedIsotopes(["EM"]);
       
-      // Set coordinates from registration_bbox of the first mims_tiff_image if available
-      if (mimsImage?.mims_tiff_images?.length > 0 && mimsImage.mims_tiff_images[0].registration_bbox) {
-        const bbox = mimsImage.mims_tiff_images[0].registration_bbox;
-        // Assuming registration_bbox is in the format [[top_left_x, top_left_y], [bottom_right_x, bottom_right_y]]
+      // Set coordinates from canvas_bbox to zoom to the MIMSImage area
+      if (mimsImage?.canvas_bbox) {
+        const bbox = mimsImage.canvas_bbox;
+        // canvas_bbox format: [tl, tr, br, bl] - we need top-left and bottom-right
         const em_bbox = [
-          {x: bbox[0][0], y: bbox[0][1], id: "em_tl"}, 
-          {x: bbox[2][0], y: bbox[2][1], id: "em_br"}
+          {x: bbox[0][0], y: bbox[0][1], id: "em_tl"},  // top-left
+          {x: bbox[2][0], y: bbox[2][1], id: "em_br"}   // bottom-right
         ];
         setEmCoordinates(em_bbox);
       }
@@ -135,19 +135,17 @@ const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolea
     const selectedTiffImages = mimsImage.mims_tiff_images?.filter((img: any) => 
       selectedIsotopes.includes(img.name)
     ) || [];
-    console.log(mimsImage)
-
     const geotiffs = mimsImage.mims_overlays?.map((overlay: any) => {
       return {
-        url: overlay.mosaic,
+        url: buildMediaURL(overlay.dzi_url),
         name: overlay.isotope,
         bounds: mimsImage?.image_set?.canvas_bbox
       };
     });
-    
+
     // Create positioned images data with registration_bbox information
     const positionedImages = selectedTiffImages?.map((tiffImage: any) => {
-      const imageUrl = `${api.defaults.baseURL}mims_image/${mimsImageId}/unwarped/${tiffImage.id}/image.png`;
+      const imageUrl = buildMediaURL(`${tiffImage?.image}`);
       
       // Calculate bounds from registration_bbox
       let bounds = null;
@@ -185,7 +183,7 @@ const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolea
     });
     
     return {
-      iiifContent: hasEm ? mimsImage.em_dzi : undefined,
+      iiifContent: hasEm ? buildMediaURL(mimsImage.em_dzi) : undefined,
       positionedImages: positionedImages?.length > 0 ? positionedImages : undefined,
       geotiffs: geotiffs?.length > 0 ? geotiffs : undefined
     };
@@ -210,7 +208,12 @@ const DetailAligned = ({isRegistering, setIsRegistering}: {isRegistering: boolea
       )}
       <div className="flex justify-between items-center">
         <div className="flex gap-8 items-center">
-          <Link to={`/canvas/${mimsImage?.image_set?.canvas.id}`}>Back to EM Image</Link>
+          <Link 
+            to={`/canvas/${mimsImage?.image_set?.canvas.id}`}
+            onClick={() => setEmCoordinates([])}
+          >
+            Back to EM Image
+          </Link>
           <div>{mimsImage?.file?.split('/').pop()}</div>
         </div>
         <button 

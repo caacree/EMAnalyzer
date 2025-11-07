@@ -25,6 +25,7 @@ urlpatterns = [
     path("api/", include("core.urls", namespace="core")),
     path("api/", include("image.urls", namespace="image")),
     path("api/", include("mims.urls", namespace="mims")),
+    path("api/", include("segmentations.urls", namespace="segmentations")),
 ]
 
 if settings.DEBUG:

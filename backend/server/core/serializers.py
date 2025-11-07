@@ -24,18 +24,25 @@ class CanvasListSerializer(serializers.ModelSerializer):
 
 class MimsOverlaySerializer(serializers.ModelSerializer):
     isotope = serializers.SerializerMethodField()
+    dzi_url = serializers.SerializerMethodField()
 
     class Meta:
         model = MIMSOverlay
-        fields = ["id", "isotope", "mosaic"]
+        fields = ["id", "isotope", "dzi_url"]
 
     def get_isotope(self, obj):
         return obj.isotope.name
 
+    def get_dzi_url(self, obj):
+        if obj.mosaic:
+            return os.path.join(settings.MEDIA_URL, obj.mosaic)
+        return None
+
 
 class MimsImageSetCanvasDetailSerializer(serializers.ModelSerializer):
-    composite_images = serializers.SerializerMethodField()
     mims_overlays = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+    mims_images = serializers.SerializerMethodField()
 
     class Meta:
         model = MIMSImageSet
@@ -48,43 +55,19 @@ class MimsImageSetCanvasDetailSerializer(serializers.ModelSerializer):
             "updated_at",
             "flip",
             "rotation_degrees",
-            "composite_images",
             "canvas_bbox",
             "pixel_size_nm",
             "mims_images",
             "mims_overlays",
         ]
 
-    def get_composite_images(self, obj):
-        composites_dir = os.path.join(
-            settings.MEDIA_ROOT,
-            "mims_image_sets",
-            str(obj.id),
-            "composites",
-            "isotopes",
-        )
-        # Get all the images in the directory
-        composite_images = []
-        dzi_folders = None
-        if Path(composites_dir).exists():
-            dzi_folders = [f for f in os.listdir(composites_dir) if f.endswith(".dzi")]
-        # Make an object where the key is the isotope name and the value is the url
-        composite_images = (
-            {
-                folder.split(".")[0]: os.path.join(
-                    settings.MEDIA_URL,
-                    "mims_image_sets",
-                    str(obj.id),
-                    "composites",
-                    "isotopes",
-                    folder,
-                )
-                for folder in dzi_folders
-            }
-            if dzi_folders
-            else None
-        )
-        return composite_images
+    def get_status(self, obj):
+        return obj.get_status_display()
+
+    def get_mims_images(self, obj):
+        from mims.serializers import MIMSImageSerializer
+
+        return MIMSImageSerializer(obj.mims_images.all(), many=True).data
 
     def get_mims_overlays(self, obj):
         return MimsOverlaySerializer(obj.overlays.all(), many=True).data

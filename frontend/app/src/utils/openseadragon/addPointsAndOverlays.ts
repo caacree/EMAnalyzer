@@ -18,8 +18,11 @@ export default function addPointsAndOverlays(
   // 1) Draw polygons/bboxes/brush fill
   if (overlaysData && Array.isArray(overlaysData)) {
     overlaysData.forEach(overlay => {
-        // Polygons, bounding boxes, suggestions, confirmed shapes, etc.
-        drawPolygonOrBboxOverlay(viewer, overlay);
+        // Only draw visible overlays
+        if (overlay.visible) {
+          // Polygons, bounding boxes, suggestions, confirmed shapes, etc.
+          drawPolygonOrBboxOverlay(viewer, overlay);
+        }
     });
   }
 

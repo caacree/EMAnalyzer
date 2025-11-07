@@ -6,6 +6,12 @@ import os
 from pathlib import Path
 from django.conf import settings
 from mims.models import MIMSImageSet, MIMSImage, Isotope
+from PIL import Image as PILImage
+from django.core.files.base import ContentFile
+import io
+import tempfile
+
+PILImage.MAX_IMAGE_PIXELS = None
 
 
 class IsotopeImageSerializer(serializers.ModelSerializer):
@@ -28,13 +34,7 @@ class IsotopeImageSerializer(serializers.ModelSerializer):
             obj.name + "_autocontrast.png",
         )
 
-        if request:
-            url = request.build_absolute_uri(
-                os.path.join(settings.MEDIA_URL, file_path)
-            )
-        else:
-            url = os.path.join(settings.MEDIA_URL, file_path)
-
+        url = os.path.join(settings.MEDIA_URL, file_path)
         return url
 
 
@@ -86,8 +86,10 @@ class MIMSImageSetSerializer(serializers.ModelSerializer):
         depth = 1
 
     def get_composite_images(self, obj):
+        canvas_id = str(obj.canvas.id)
         relative_dir = os.path.join(
-            "mims_image_sets",
+            "tmp_images",
+            canvas_id,
             str(obj.id),
             "composites",
             "isotopes",
@@ -107,7 +109,7 @@ class MIMSImageSetSerializer(serializers.ModelSerializer):
         # Make an object where the key is the isotope name and the value is the url
         composite_images = {
             isotope_name: os.path.join(
-                "http://localhost:8000/media", relative_dir, isotope_name + ".dzi"
+                settings.MEDIA_URL, relative_dir, isotope_name + ".dzi"
             )
             for isotope_name in composite_images
         }
@@ -128,3 +130,46 @@ class ImageSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def create(self, validated_data):
+        """Convert uploaded image to compressed PNG before saving"""
+        file_obj = validated_data.get("file")
+
+        if file_obj:
+            # Save to temporary location to read it
+            with tempfile.NamedTemporaryFile(
+                delete=False, suffix=os.path.splitext(file_obj.name)[1]
+            ) as temp_file:
+                for chunk in file_obj.chunks():
+                    temp_file.write(chunk)
+                temp_path = temp_file.name
+
+            try:
+                # Open and convert to PNG
+                with PILImage.open(temp_path) as img:
+                    # Convert to RGB or grayscale as appropriate
+                    if img.mode in ("RGBA", "LA", "P"):
+                        img = img.convert("RGB")
+                    elif img.mode not in ("RGB", "L"):
+                        img = img.convert("RGB")
+
+                    # Save to PNG in memory with compression
+                    buffer = io.BytesIO()
+                    img.save(buffer, format="PNG", optimize=True, compress_level=6)
+                    buffer.seek(0)
+
+                    # Get the original filename and change extension to .png
+                    original_filename = os.path.basename(file_obj.name)
+                    png_filename = os.path.splitext(original_filename)[0] + ".png"
+
+                    # Replace the file with PNG version
+                    validated_data["file"] = ContentFile(
+                        buffer.read(), name=png_filename
+                    )
+
+            finally:
+                # Clean up temp file
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+
+        return super().create(validated_data)

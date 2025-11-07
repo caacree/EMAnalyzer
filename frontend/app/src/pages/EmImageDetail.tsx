@@ -2,7 +2,7 @@
 import { useParams } from "@tanstack/react-router";
 import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import api from "@/api/api";
+import api, { BASE_URL, buildMediaURL } from "@/api/api";
 import OpenSeaDragon from '@/components/shared/OpenSeaDragon';
 
 const fetchEMImageDetail = async (id: string) => {
@@ -58,7 +58,7 @@ const EMImageDetail = () => {
     <div className="w-full flex flex-col ml-10 gap-5">
       <h2>EM Image: {image.friendly_name}</h2>
       <div className="flex w-full gap-5">
-        <OpenSeaDragon iiifContent={image.dzi_file} />
+        <OpenSeaDragon iiifContent={buildMediaURL(image.dzi_file)} />
         <div className="flex flex-col gap-3">
           <div>MIMS Image sets</div>
           {image?.mims_sets?.map((mimsImageSet: any) => (

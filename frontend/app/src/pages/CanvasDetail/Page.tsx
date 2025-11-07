@@ -3,7 +3,7 @@ import { useParams } from "@tanstack/react-router";
 import React from "react";
 import CanvasMenu from "./CanvasMenu";
 import { useQuery } from "@tanstack/react-query";
-import api from "@/api/api";
+import api, { BASE_URL, buildMediaURL } from "@/api/api";
 import ControlledOpenSeaDragon from '@/components/shared/ControlledOpenSeaDragon';
 import { useCanvasViewer } from "@/stores/canvasViewer";
 
@@ -27,7 +27,7 @@ const CanvasDetail = () => {
   }
   //reduce them into a single array of objects with url, name, bounds
   const geotiffs = canvas?.mims_sets?.map(i => i.mims_overlays.map(o => ({
-    url: o.mosaic,
+    url: buildMediaURL(o.dzi_url),
     name: o.isotope,
     bounds: i.canvas_bbox
   }))).flat();
@@ -37,7 +37,7 @@ const CanvasDetail = () => {
       <CanvasMenu />
       <div className="flex-1 flex flex-col gap-5 p-5 grow">
         <ControlledOpenSeaDragon 
-          iiifContent={image.dzi_file}
+          iiifContent={buildMediaURL(image.dzi_file)}
           geotiffs={geotiffs}
           canvasStore={canvasStore}
           mode="navigate"

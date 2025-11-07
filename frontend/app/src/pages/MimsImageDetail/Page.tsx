@@ -22,7 +22,7 @@ const MimsImage = () => {
     queryFn: () => fetchMimsImageDetail(mimsImageId as string)
   });
   
-  const showRegister = mimsImage?.status !== "DEWARPED_ALIGNED" || isRegistering;
+  const showRegister = mimsImage?.status.toLowerCase() !== "registered" || isRegistering;
   if (!mimsImage) {
     return <div>Loading...</div>;
   }

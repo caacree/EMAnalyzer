@@ -1,21 +1,22 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useNavigate, useParams } from "@tanstack/react-router";
 import React, { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import api from "@/api/api";
-import MimsImageSetUploadModal from "@/components/shared/MimsImageSetUploadModal";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import api, { BASE_URL, API_BASE_URL, buildMediaURL } from "@/api/api";
 import ControlledOpenSeaDragon from '@/components/shared/ControlledOpenSeaDragon';
 import { useCanvasViewer } from "@/stores/canvasViewer";
 import { useMimsViewer } from "@/stores/mimsViewer";
-import MIMSImageSet from "../CanvasDetail/MimsImageSetListMenuItem";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/shared/ui/tabs";
 import { Checkbox } from "@/components/shared/ui/checkbox";
 import { Slider } from "@/components/shared/ui/slider";
-import { XCircleIcon } from "lucide-react";
+import { Trash2, XCircleIcon } from "lucide-react";
 import { postImageSetPoints } from "@/api/api";
 import { cn } from "@/lib/utils";
 import { usePrepareCanvasForGuiQuery } from "@/queries/queries";
 import CanvasMenu from "../CanvasDetail/CanvasMenu";
+import RegisteredImageSet from "./RegisteredImageSet";
+import UnregisteredImageSet from "./UnregisteredImageSet";
+
 
 const fetchCanvasDetail = async (id: string) => {
   const res = await api.get(`canvas/${id}/`);
@@ -27,6 +28,8 @@ const MimsImageSetDetail = () => {
   const { canvasId, mimsImageSetId } = params;
   const mimsImageSet  = mimsImageSetId as string;
   const [selectedIsotope, setSelectedIsotope] = useState("32S");
+  const [mode, setMode] = useState<"shapes" | "draw" | "navigate" | "points">("navigate");
+  const queryClient = useQueryClient();
   const { data: canvas, isLoading } = useQuery({
     queryKey: ['canvas', canvasId as string],
     queryFn: () => fetchCanvasDetail(canvasId as string),
@@ -37,7 +40,6 @@ const MimsImageSetDetail = () => {
   const mimsStoreApi = useMimsViewer;
   const mimsStore = mimsStoreApi();
   const {setFlip: setMimsFlip, setRotation: setMimsRotation} = mimsStore;
-  const [mode, setMode] = useState<"shapes" | "draw" | "navigate" | "points">("navigate");
   const points = {em: canvasStore.points, mims: mimsStore.points};
 
   const image = canvas?.images?.[0];
@@ -60,8 +62,18 @@ const MimsImageSetDetail = () => {
     }
   }, [canvas, mimsImageSetId]);
     
-  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  
+  const handleDeleteImageSet = async () => {
+    try {
+      await api.delete(`/mims_image_set/${mimsImageSet}/`);
+      queryClient.invalidateQueries();
+      // Navigate back to canvas page
+      navigate({ to: `/canvas/${canvasId}` });
+    } catch (error) {
+      console.error('Failed to delete MIMS Image Set:', error);
+      alert('Failed to delete MIMS Image Set');
+    }
+    setShowDeleteConfirm(false);
+  };
 
   if (isLoading) {
     return <p>Loading...</p>;
@@ -75,123 +87,37 @@ const MimsImageSetDetail = () => {
   }  
 
   const selectedMimsSet = canvas?.mims_sets?.find((imageSet: any) => imageSet.id === mimsImageSet);
+  const isRegistered = selectedMimsSet?.status?.toLowerCase() === 'registered';
   return (
     <div className="flex">
       <CanvasMenu />
-    <div className="flex flex-col px-10 gap-5 w-full grow">
-      <div className="flex w-full grow">
-        <div className="flex w-1/2 max-w-1/2 min-h-[400px] grow">
-          <ControlledOpenSeaDragon 
-            iiifContent={image.dzi_file} 
-            canvasStore={canvasStoreApi}
-            mode={mode}
+      <div className="flex flex-col px-10 gap-5 w-full grow">
+        {/* Branching logic based on registration status */}
+        {isRegistered ? (
+          <RegisteredImageSet 
+            selectedMimsSet={selectedMimsSet}
+            canvas={canvas}
+            onDelete={handleDeleteImageSet}
           />
-        </div>
-        <div className="flex w-1/2 max-w-1/2">
-          <div className={cn("flex flex-col grow gap-3 max-w-full overflow-hidden min-h-[400px]")}>
-            {!mimsImageSet ? (
-              <>
-                <div>MIMS Image sets</div>
-                {canvas?.mims_sets?.map((mimsImageSet: any) => (
-                    <MIMSImageSet key={mimsImageSet.id} mimsImageSet={mimsImageSet} onSelect={(newId: string) => {
-                    navigate({ search: (prev: any) => ({ ...prev, mimsImageSet: newId }) });
-                  }} />
-                ))}
-              </>
-            ) : null}
-            {selectedMimsSet ? (
-                <Tabs value={selectedIsotope} className="flex flex-col grow">
-                  <TabsList className="flex space-x-1">
-                    {Object.keys(selectedMimsSet?.composite_images || {}).map((isotope: string) => (
-                      <TabsTrigger key={isotope} value={isotope} onClick={() => setSelectedIsotope(isotope)}>
-                        {isotope}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                  {Object.keys(selectedMimsSet?.composite_images || {}).map((isotope: string) => {
-                    const isActive = selectedIsotope === isotope;
-                    let iiifContent, url = undefined;
-                    if (selectedMimsSet.mims_images.length > 1) {
-                      iiifContent = "http://localhost:8000" + selectedMimsSet.composite_images[selectedIsotope]+"/info.json"
-                    } else {
-                      url = `http://localhost:8000/api/mims_image/${selectedMimsSet.mims_images[0].id}/image.png?species=${isotope}&autocontrast=true`
-                    }
-                    return (
-                    <TabsContent key={isotope} value={isotope} className={cn("flex flex-col", isActive ? "grow" : "hidden")}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex gap-2 items-center">
-                          Flip: <Checkbox checked={mimsStore.flip} onCheckedChange={setMimsFlip} />
-                        </div>
-                        <div className="flex gap-2 items-center">
-                          Rotation:<Slider 
-                            value={[mimsStore.rotation]} 
-                            min={0} 
-                            max={360} 
-                            onValueChange={(val) => setMimsRotation(Math.round(val[0]))} 
-                          />{mimsStore.rotation}&deg;
-                        </div>
-                      </div>
-                      <div className="flex grow">
-                        <ControlledOpenSeaDragon 
-                          iiifContent={iiifContent}
-                          url={url}
-                          canvasStore={mimsStoreApi}
-                          mode={mode}
-                        />
-                      </div>
-                    </TabsContent>
-                  )})}
-                </Tabs>
-            ) : null}
-            <button
-              onClick={() => setIsUploadModalOpen(true)}
-              className="bg-blue-500 text-white px-4 py-2 rounded flex items-center justify-center"
-            >
-              Add New MIMS Image Set
-            </button>
-            <MimsImageSetUploadModal 
-              isOpen={isUploadModalOpen}
-              onClose={() => setIsUploadModalOpen(false)}
-              canvasId={canvas.id}
-            />
-          </div>
-        </div>
+        ) : (
+          <UnregisteredImageSet 
+            selectedMimsSet={selectedMimsSet}
+            image={image}
+            selectedIsotope={selectedIsotope}
+            setSelectedIsotope={setSelectedIsotope}
+            mode={mode}
+            setMode={setMode}
+            points={points}
+            canvasStoreApi={canvasStoreApi}
+            mimsStoreApi={mimsStoreApi}
+            mimsStore={mimsStore}
+            canvasStore={canvasStore}
+            setMimsFlip={setMimsFlip}
+            setMimsRotation={setMimsRotation}
+            submitImageSetPoints={submitImageSetPoints}
+          />
+        )}
       </div>
-      {selectedMimsSet ? (
-        <div className="flex flex-col">
-          <div className="flex gap-2 items-center">
-            <div>Select points</div>
-            <Checkbox checked={mode === "points"} onCheckedChange={() => mode === "points" ? setMode("navigate") : setMode("points")} />
-          </div>
-          <div>Selected Points</div>
-          {[...Array(Math.max(points.em?.length, points.mims?.length))].map((_, index) => {
-            if (!points.em[index] && !points.mims[index]) {
-              return null;
-            }
-            return (
-            <div key={index} className={`flex gap-4 items-center`}>
-              <div>
-                EM {index + 1}: {points.em[index]?.x.toFixed(2)}, {points.em[index]?.y.toFixed(2)}
-              </div>
-              <div>
-                MIMS {index + 1}: {points.mims[index]?.x.toFixed(2)}, {points.mims[index]?.y.toFixed(2)}
-              </div>
-              <XCircleIcon onClick={() => {
-                if (points.em[index]) {
-                  canvasStore.removePoint(points.em[index].id);
-                }
-                if (points.mims[index]) {
-                  mimsStore.removePoint(points.mims[index].id);
-                }
-              }} className="cursor-pointer" />
-            </div>
-          )})}
-          {(points.em?.length === 3 && points.mims?.length === 3) ? (
-            <button onClick={submitImageSetPoints}>Submit points</button>
-          ) : null}
-        </div>
-        ) : null}
-    </div>
     </div>
   );
 };

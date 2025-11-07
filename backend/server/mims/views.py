@@ -71,7 +71,7 @@ class MIMSImageSetViewSet(viewsets.ModelViewSet):
         mims_image_set = self.get_object()
         viewset_points = data.get("points")
         isotope = data.get("isotope", "SE")
-        orient_viewset(mims_image_set, viewset_points, isotope)
+        orient_viewset_task.delay(mims_image_set.id, viewset_points, isotope)
         return Response(status=status.HTTP_200_OK)
 
 
@@ -138,7 +138,7 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
                 {"message": "MIMS image is already undergoing registration"},
                 status=status.HTTP_400_BAD_REQUEST,
             )"""
-        mims_image.status = "REGISTERING"
+        mims_image.status = MIMSImage.Status.REGISTERING
         mims_image.save()
 
         # Extract data from the request
@@ -163,7 +163,7 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
         )
 
         create_registration_images_task.delay(mims_image.id)
-        mims_image.status = "AWAITING_REGISTRATION"
+        mims_image.status = MIMSImage.Status.REGISTERING
         mims_image.save()
 
         return Response(
@@ -229,7 +229,7 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
                 {"message": "MIMS image is not ready for registration"},
                 status=status.HTTP_400_BAD_REQUEST,
             )"""
-        mims_image.status = "REGISTERING"
+        mims_image.status = MIMSImage.Status.REGISTERING
         mims_image.save()
 
         em_shapes = request.data.get("em_shapes")
@@ -283,7 +283,7 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def reset(self, request, pk=None):
         mims_image = get_object_or_404(MIMSImage, pk=pk)
-        mims_image.status = "PREPROCESSING"
+        mims_image.status = MIMSImage.Status.PREPROCESSING
         mims_image.alignments.all().delete()
         mims_image.save()
         return Response(
@@ -330,7 +330,7 @@ class MIMSImageViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def outside_canvas(self, request, pk=None):
         mims_image = get_object_or_404(MIMSImage, pk=pk)
-        mims_image.status = "OUTSIDE_CANVAS"
+        mims_image.status = MIMSImage.Status.OUTSIDE_CANVAS
         mims_image.save()
         return Response(
             {"message": "MIMS image is outside the canvas"}, status=status.HTTP_200_OK

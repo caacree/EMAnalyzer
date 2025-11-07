@@ -9,15 +9,20 @@ Image.MAX_IMAGE_PIXELS = None
 
 
 def get_em_image_upload_path(instance, filename):
-    if instance.id:
-        return f"em_images/{instance.id}/{filename}"
-    return f"em_images/temp/{filename}"
+    """Store raw EM images organized by image ID"""
+    return f"em_images/{instance.id}/{filename}"
 
 
 def get_dzi_image_upload_path(instance, filename):
-    if instance.id:
-        return f"em_images/{instance.id}/converted/{filename}"
-    return f"em_images/temp/converted/{filename}"
+    """Store DZI files in tmp_images organized by canvas and image"""
+    return f"tmp_images/{instance.canvas.id}/{instance.id}/{filename}"
+
+
+class ViewStatus(models.IntegerChoices):
+    NO_FILE = 0
+    UNPROCESSED = 1
+    PROCESSING = 2
+    READY = 3
 
 
 class Image(CanvasObj):
@@ -28,6 +33,10 @@ class Image(CanvasObj):
     canvas = models.ForeignKey(Canvas, on_delete=models.CASCADE, related_name="images")
     friendly_name = models.CharField(max_length=255, null=True, blank=True)
 
+    view_status = models.IntegerField(
+        choices=ViewStatus.choices, default=ViewStatus.UNPROCESSED
+    )
+
     def __str__(self):
         return self.file.path
 
@@ -37,29 +46,15 @@ class Image(CanvasObj):
 
     def save(self, *args, **kwargs):
         is_new = self.pk is None
-        old_file_path = self.file.path if not is_new else None
         super().save(*args, **kwargs)
         if is_new:
             # Try and get the pixel size from the image metadata
             try:
                 with Image.open(self.file.path) as img:
                     self.pixel_size_nm = float(img.tag_v2.get(0x828D, [0])[0])
+                    super().save(update_fields=["pixel_size_nm"])
             except Exception:
                 pass
-            # Update file paths after initial save to use the correct ID-based paths
-            new_file_path = get_em_image_upload_path(
-                self, os.path.basename(self.file.name)
-            )
-            new_dzi_file_path = get_dzi_image_upload_path(
-                self, os.path.basename(self.file.name)
-            )
-            if self.file.name != new_file_path:
-                self.file.name = new_file_path
-                self.dzi_file.name = new_dzi_file_path
-                self.save(update_fields=["file", "dzi_file"])
-                # Cleanup the old temporary file if it exists
-                if old_file_path and os.path.isfile(old_file_path):
-                    os.remove(old_file_path)
             convert_to_dzi_format.delay(self.id)
 
     def delete(self, *args, **kwargs):

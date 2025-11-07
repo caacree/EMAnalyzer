@@ -11,6 +11,7 @@ import cv2
 from PIL import ImageOps
 import time
 from skimage.draw import polygon
+from mims.models import MIMSImage, MIMSImageSet
 
 
 def calculate_transformation_error(tform, src_points, dst_points):
@@ -187,6 +188,7 @@ def orient_viewset(mims_imageviewset, points, isotope):
     mims_imageviewset.pixel_size_nm = (
         mims_imageviewset.canvas.pixel_size_nm or 5
     ) * scale
+    mims_imageviewset.status = MIMSImageSet.Status.ROUGH_ALIGNMENT
 
     print(
         f"Scaled by {scale}, rotated by {rotation_degrees}, flipped: {flip}, translated by {translation}"
@@ -239,7 +241,7 @@ def calculate_individual_mims_translations(
         )
 
         if max_x < 0 or min_x > em_shape[1] or max_y < 0 or min_y > em_shape[0]:
-            mims_image.status = "OUTSIDE_CANVAS"
+            mims_image.status = MIMSImage.Status.OUTSIDE_CANVAS
             mims_image.save()
             continue
 
@@ -264,9 +266,8 @@ def calculate_individual_mims_translations(
             em_max_val = np.max(masked_values)
 
         if em_max_val == 0:
-            mims_image.status = "OUTSIDE_CANVAS"
+            mims_image.status = MIMSImage.Status.OUTSIDE_CANVAS
             mims_image.save()
             continue
 
-        mims_image.status = "NEED_USER_ALIGNMENT"
         mims_image.save()

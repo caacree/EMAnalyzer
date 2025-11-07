@@ -26,10 +26,12 @@ class IsotopeImageSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         mims_image = self.context.get("mims_image")
         mims_image_set = mims_image.image_set
+        canvas_id = mims_image.canvas.id
         filename = os.path.basename(mims_image.file.name).split(".")[0]
 
         file_path = os.path.join(
-            "mims_image_sets",
+            "tmp_images",
+            str(canvas_id),
             str(mims_image_set.id),
             "mims_images",
             filename,
@@ -37,30 +39,30 @@ class IsotopeImageSerializer(serializers.ModelSerializer):
             obj.name + "_autocontrast.png",
         )
 
-        if request:
-            url = request.build_absolute_uri(
-                os.path.join(settings.MEDIA_URL, file_path)
-            )
-        else:
-            url = os.path.join(settings.MEDIA_URL, file_path)
-
+        url = os.path.join(settings.MEDIA_URL, file_path)
         return url
 
 
 class MIMSOverlaySerializer(serializers.ModelSerializer):
     isotope = serializers.SerializerMethodField()
+    dzi_url = serializers.SerializerMethodField()
 
     class Meta:
         model = MIMSOverlay
-        fields = ["id", "isotope", "mosaic"]
+        fields = ["id", "isotope", "dzi_url"]
 
     def get_isotope(self, obj):
         return obj.isotope.name
 
+    def get_dzi_url(self, obj):
+        if obj.mosaic:
+            return os.path.join(settings.MEDIA_URL, obj.mosaic)
+        return None
+
 
 class MIMSImageSetSerializer(serializers.ModelSerializer):
-    composite_images = serializers.SerializerMethodField()
     mims_overlays = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
 
     class Meta:
         model = MIMSImageSet
@@ -71,7 +73,6 @@ class MIMSImageSetSerializer(serializers.ModelSerializer):
             "canvas",
             "created_at",
             "updated_at",
-            "composite_images",
             "flip",
             "rotation_degrees",
             "canvas_bbox",
@@ -80,31 +81,8 @@ class MIMSImageSetSerializer(serializers.ModelSerializer):
             "mims_overlays",
         ]
 
-    def get_composite_images(self, obj):
-        composites_dir = os.path.join(
-            settings.MEDIA_ROOT,
-            "mims_images",
-            str(obj.id),
-            "composites",
-            "isotopes",
-        )
-        # Get all the images in the directory
-        composite_images = []
-        if Path(composites_dir).exists():
-            [f.split(".")[0] for f in os.listdir(composites_dir)]
-        # Make an object where the key is the isotope name and the value is the url
-        composite_images = {
-            isotope_name: os.path.join(
-                settings.MEDIA_URL,
-                "mims_images",
-                str(obj.id),
-                "composites",
-                "isotopes",
-                isotope_name + ".png",
-            )
-            for isotope_name in composite_images
-        }
-        return composite_images
+    def get_status(self, obj):
+        return obj.get_status_display()
 
     def get_mims_overlays(self, obj):
         return MIMSOverlaySerializer(obj.overlays.all(), many=True).data
@@ -138,6 +116,7 @@ class MIMSImageSerializer(serializers.ModelSerializer):
     em_dzi = serializers.SerializerMethodField()
     registration = serializers.SerializerMethodField()
     mims_tiff_images = MimsTiffImageSerializer(many=True, read_only=True)
+    status = serializers.SerializerMethodField()
 
     class Meta:
         model = MIMSImage
@@ -156,6 +135,9 @@ class MIMSImageSerializer(serializers.ModelSerializer):
             "mims_tiff_images",
         ]
 
+    def get_status(self, obj):
+        return obj.get_status_display()
+
     def get_isotopes(self, obj):
         isotopes = obj.isotopes.all()
         return IsotopeImageSerializer(
@@ -167,18 +149,27 @@ class MIMSImageSerializer(serializers.ModelSerializer):
     def get_em_dzi(self, obj):
         canvas = obj.image_set.canvas
         em_image = canvas.images.first()
-        if em_image:
-            return "http://localhost:8000" + em_image.dzi_file.url
+        if em_image and em_image.dzi_file:
+            return em_image.dzi_file.url
 
     def get_registration(self, obj):
-        if obj.status != "AWAITING_REGISTRATION" and obj.status != "DEWARP PENDING":
+        if obj.status != MIMSImage.Status.REGISTERING:
             return None
         isotopes = obj.isotopes.all()
-        filepath = Path(obj.file.name)
+        canvas_id = obj.canvas.id
+        image_set_id = obj.image_set.id
+        filename = os.path.basename(obj.file.name).split(".")[0]
+
         base = os.path.join(
-            settings.MEDIA_URL, filepath.parent, filepath.stem, "registration"
+            settings.MEDIA_URL,
+            "tmp_images",
+            str(canvas_id),
+            str(image_set_id),
+            "mims_images",
+            filename,
+            "registration"
         )
-        suffix = "_final" if obj.status == "DEWARP PENDING" else ""
+        suffix = ""
 
         urls = {
             "em_url": os.path.join(base, f"em{suffix}.png"),

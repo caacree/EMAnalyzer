@@ -23,6 +23,7 @@ export interface CanvasViewerState {
   clearOverlays: () => void
   updateOverlayColor: (id: string, color: string) => void
   updatePointColor: (id: string, color: string) => void
+  setSegmentationOverlays: (overlays: CanvasOverlay[]) => void
 }
 
 export const useCanvasViewer = create<CanvasViewerState>((set) => ({
@@ -79,6 +80,14 @@ export const useCanvasViewer = create<CanvasViewerState>((set) => ({
       points: state.points.map(p =>
         p.id === id ? { ...p, color } : p
       ),
+    })),
+  
+  setSegmentationOverlays: (overlays: CanvasOverlay[]) =>
+    set(state => ({
+      overlays: [
+        ...state.overlays.filter(o => o.type !== 'segmentation'),
+        ...overlays
+      ]
     })),
 }))
 

@@ -5,12 +5,13 @@ export const drawPolygonOrBboxOverlay = (viewer: OpenSeadragon.Viewer, overlay: 
   const { bbox, polygon } = overlay.data || {};
   if (!bbox && !polygon) return;
 
-  const coords = bbox || polygon;
+  const coords = polygon || bbox;
   const tiledImage = viewer.world.getItemAt(0);
   if (!tiledImage || !coords?.length) return;
   
   const flip = tiledImage.getFlip();
   const contentSize = tiledImage.getContentSize();
+  console.log(coords)
   const viewportPoints = coords.map(([ix, iy]: [number, number]) => {
     if (flip) {
       ix = contentSize.x - ix;
@@ -54,7 +55,7 @@ export const drawPolygonOrBboxOverlay = (viewer: OpenSeadragon.Viewer, overlay: 
     polyline.setAttribute("stroke", overlay.color || "red");
     polyline.setAttribute("stroke-width", "0.01");
   }
-  polyline.setAttribute("opacity", "0.5");
+  polyline.setAttribute("opacity", (overlay.opacity || 0.5).toString());
   svgEl.appendChild(polyline);
 
   const wrapper = document.createElement("div");

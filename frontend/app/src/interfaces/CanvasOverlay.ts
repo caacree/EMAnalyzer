@@ -4,6 +4,7 @@ export interface CanvasOverlay {
   visible: boolean;
   fill?: boolean;
   color?: string;
-  type?: string;  // e.g. "shape_confirmed", "brush_stroke", "suggestion"...
+  type?: string;  // e.g. "shape_confirmed", "brush_stroke", "suggestion", "segmentation"...
   strokeWidth?: number;
+  opacity?: number;
 }

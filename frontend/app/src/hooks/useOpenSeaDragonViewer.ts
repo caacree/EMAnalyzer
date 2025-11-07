@@ -1,6 +1,7 @@
 // useOpenSeadragonViewer.ts
 import { useEffect, useRef, useCallback, useState } from "react";
 import OpenSeadragon, { TileSource, Viewer } from "openseadragon";
+import { BASE_URL } from "../api/api";
 
 /* ------------ utility: stable key for deep comparison --------------- */
 const keyOf = (src?: string | string[]) =>
@@ -136,16 +137,48 @@ export function useOpenSeadragonViewer({
       const v = osdRef.current;
 
       // Debug viewport state immediately after creation
-
       /* ----------- zoom synchronisation (TWO-WAY) ------------------------ */
-      v.addOnceHandler("open", () => {
-        // reference layer will be replaced every time world is rebuilt
-        refImgRef.current = v.world.getItemAt(0) ?? null;
+      v.world.addHandler("add-item", (event: any) => {
+        // Set the reference to the first/base image if not already set
+        if (event.item && !refImgRef.current) {
+          refImgRef.current = event.item;
 
-        // Apply initial flip and rotation to the new reference
-        if (refImgRef.current) {
+          // Apply initial flip and rotation to the new reference
           refImgRef.current.setFlip(storeState.flip);
           refImgRef.current.setRotation(-storeState.rotation);
+          
+          // Apply coordinate zoom if coordinates are available
+          if (storeState.coordinates && storeState.coordinates.length >= 2) {
+            // Find top-left and bottom-right coordinates
+            const tl = storeState.coordinates.find((coord: any) => coord.id === "em_tl");
+            const br = storeState.coordinates.find((coord: any) => coord.id === "em_br");
+            
+            if (tl && br) {
+              // Get the base image dimensions
+              const baseImage = refImgRef.current;
+              const contentSize = baseImage.getContentSize();
+              
+              if (contentSize.x > 0 && contentSize.y > 0) {
+                // Use the same coordinate conversion as the hover box overlay
+                const tlViewport = baseImage.imageToViewportCoordinates(tl.x, tl.y);
+                const brViewport = baseImage.imageToViewportCoordinates(br.x, br.y);
+                // Create OpenSeaDragon Rectangle for the bounds using viewport coordinates
+                const bounds = new OpenSeadragon.Rect(
+                  tlViewport.x, 
+                  tlViewport.y, 
+                  brViewport.x - tlViewport.x, 
+                  brViewport.y - tlViewport.y
+                );
+                
+                // Small delay to ensure the viewer is fully ready
+                setTimeout(() => {
+                  if (!isDestroyedRef.current) {
+                    v.viewport.fitBounds(bounds, true);
+                  }
+                }, 100);
+              }
+            }
+          }
         }
       });
 
@@ -212,7 +245,42 @@ export function useOpenSeadragonViewer({
     }
   }, [storeState.flip, storeState.rotation, isViewerInitialized]);
 
-  /* ------------------------------------------------------------------ 5. rebuild WORLD when sources change */
+  /* ------------------------------------------------------------------ 5. handle coordinate changes after viewer is ready */
+  useEffect(() => {
+    const v = osdRef.current;
+    if (!v || !isViewerInitialized || isDestroyedRef.current || !refImgRef.current) return;
+    
+    if (storeState.coordinates && storeState.coordinates.length >= 2) {
+      // Find top-left and bottom-right coordinates
+      const tl = storeState.coordinates.find((coord: any) => coord.id === "em_tl");
+      const br = storeState.coordinates.find((coord: any) => coord.id === "em_br");
+      
+      if (tl && br) {
+        // Get the base image dimensions
+        const baseImage = refImgRef.current;
+        const contentSize = baseImage.getContentSize();
+        
+        if (contentSize.x > 0 && contentSize.y > 0) {
+          // Use the same coordinate conversion as the hover box overlay
+          const tlViewport = baseImage.imageToViewportCoordinates(tl.x, tl.y);
+          const brViewport = baseImage.imageToViewportCoordinates(br.x, br.y);
+          
+          // Create OpenSeaDragon Rectangle for the bounds using viewport coordinates
+          const bounds = new OpenSeadragon.Rect(
+            tlViewport.x, 
+            tlViewport.y, 
+            brViewport.x - tlViewport.x, 
+            brViewport.y - tlViewport.y
+          );
+          
+          // Zoom to fit the bounds with animation
+          v.viewport.fitBounds(bounds, true);
+        }
+      }
+    }
+  }, [storeState.coordinates, isViewerInitialized]);
+
+  /* ------------------------------------------------------------------ 6. rebuild WORLD when sources change */
   const srcKey = `${iiifContent ?? ""}|${keyOf(url)}|${positionedImages ? positionedImages.map(img => img.url).join("|") : ""}|${geotiffs ? geotiffs.map(img => img.url).join("|") : ""}`;
   useEffect(() => {
     // Add a small delay to prevent rapid rebuilds
@@ -308,7 +376,7 @@ export function useOpenSeadragonViewer({
             const allTileSourceSpecs: any[] = [];
             geotiffs?.forEach(async (geotiff: any) => {
               allTileSourceSpecs.push({
-                url: `http://localhost:8000${geotiff.url}`, 
+                url: `${BASE_URL}${geotiff.url}`, 
                 bounds: geotiff.bounds});
             })
             allTileSourceSpecs.forEach((tileSourceSpec: any) => {

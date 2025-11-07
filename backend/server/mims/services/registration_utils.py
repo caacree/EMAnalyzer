@@ -8,6 +8,9 @@ from pathlib import Path
 from scipy.spatial import ConvexHull
 
 from mims.model_utils import get_autocontrast_image_path
+from pystackreg import StackReg
+from pystackreg.util import to_uint16
+from scipy import ndimage
 
 
 def polygon_centroid(polygon):
@@ -67,6 +70,16 @@ def create_mask_from_shapes(image_shape, shapes):
             cv2.fillPoly(mask, [polygon_np], 255)  # Fill the polygon with white (255)
 
     return mask
+
+
+def get_species_summed(mims, species):
+    sr = StackReg(StackReg.AFFINE)
+    sr.register_stack(mims.data.loc[species].to_numpy(), reference="previous")
+    stacked = sr.transform_stack(mims.data.loc[species].to_numpy())
+    stacked = to_uint16(stacked)
+    species_summed = stacked.sum(axis=0)
+    species_summed = ndimage.median_filter(species_summed, size=1).astype(np.uint16)
+    return species_summed
 
 
 def create_registration_images(mims_image, masks=None):

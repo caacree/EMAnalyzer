@@ -27,6 +27,7 @@ from django.shortcuts import get_object_or_404
 from mims.models import MIMSImage
 import time
 from skimage.transform import SimilarityTransform
+from mims.services.create_overlays import update_mims_image_set_status
 
 
 def _as_int(v):
@@ -98,15 +99,6 @@ def get_mims_dims(mims_image):
 
 
 # ------------------------------------------------------------------
-def _flip_x(arr, max_x):
-    arr = np.asarray(arr, float).copy()
-    if arr.ndim == 1:
-        arr[0] = max_x - arr[0]
-    else:
-        arr[:, 0] = max_x - arr[:, 0]
-    return arr
-
-
 def _flip_x(arr, max_x):
     arr = np.asarray(arr, float).copy()
     if arr.ndim == 1:
@@ -222,8 +214,8 @@ def register_images(mims_image_obj_id):
     # clamp to the EM image limits (in case any indices went slightly <0 or >size-1)
     em_img = np.array(Image.open(mims_img.canvas.images.first().file.path))
     H, W = em_img.shape[:2]
-    x0, x1 = np.clip([x0, x1], 0, W)
-    y0, y1 = np.clip([y0, y1], 0, H)
+    # x0, x1 = np.clip([x0, x1], 0, W)
+    # y0, y1 = np.clip([y0, y1], 0, H)
 
     # ---------- 6. save bbox & regenerate TIFFs --------------------
     mims_img.canvas_bbox = [
@@ -270,16 +262,16 @@ def register_images(mims_image_obj_id):
         mask = cv2.resize(mask, (y1 - y0, x1 - x0), interpolation=cv2.INTER_NEAREST)
 
         # ------------ 5. build 4-channel BGRA array -------------------
-        img_u8 = np.clip(img, 0, 255).astype(np.uint8)
-        alpha = (mask > 0.5).astype(np.uint8) * 255  # 0 or 255
-        rgba = cv2.merge([img_u8, img_u8, img_u8, alpha])
+        is_16bit = np.max(img) > 255
+        if is_16bit:
+            img = img.astype(np.uint16)
+        else:
+            img = img.astype(np.uint8)
 
-        # ------------ 6. write lossless PNG ---------------------------
+        # ------------ 6. write compressed PNG ---------------------------
         reg_loc = Path(mims_img.file.path).with_suffix("") / "registration"
-        out_path = reg_loc / f"{iso.name}_unwarped.png"
-        cv2.imwrite(
-            str(out_path), rgba, [cv2.IMWRITE_PNG_COMPRESSION, 0]
-        )  # 0 = no compression
+        out_path = reg_loc / f"{iso.name}_unwarped_{mims_img.name}.png"
+        cv2.imwrite(str(out_path), img, [cv2.IMWRITE_PNG_COMPRESSION, 6])
 
         # ------------ 7. store in DB, then delete temp ---------------
         with open(out_path, "rb") as fh:
@@ -289,11 +281,11 @@ def register_images(mims_image_obj_id):
                 name=f"{iso.name}",
                 registration_bbox=mims_img.canvas_bbox,
             )
-            print(tiff.image.path)
         out_path.unlink()
     print("unwarp time:", round(time.time() - t0, 1), "s")
 
-    mims_img.status = "DEWARPED_ALIGNED"
+    mims_img.status = MIMSImage.Status.REGISTERED
     mims_img.save(update_fields=["status"])
-    print("done")
+
+    update_mims_image_set_status(mims_img.image_set.id)
     return True

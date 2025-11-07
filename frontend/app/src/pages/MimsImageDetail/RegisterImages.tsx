@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, Link } from "@tanstack/react-router";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/shared/ui/tabs";
-import api from "@/api/api";
+import api, { API_BASE_URL, buildMediaURL } from "@/api/api";
 import { useCanvasViewer } from "@/stores/canvasViewer";
 import { useMimsViewer } from "@/stores/mimsViewer";
 import { usePrepareCanvasForGuiQuery } from "@/queries/queries";
@@ -152,6 +152,7 @@ const MimsImage = ({isRegistering, setIsRegistering}: {isRegistering: boolean, s
   if (mimsImage.status === "DEWARPED_ALIGNED" && !isRegistering) {
     return <DetailAligned isRegistering={isRegistering} setIsRegistering={setIsRegistering} />
   }
+  console.log(mimsImage);
   
   return (
     <div className="flex flex-col w-full m-4 mb-5">
@@ -167,7 +168,7 @@ const MimsImage = ({isRegistering, setIsRegistering}: {isRegistering: boolean, s
           <div className="flex flex-col">
             <div className="w-[600px] h-[600px]">
                 <OpenSeaDragonSegmenter 
-                  iiifContent={mimsImage?.em_dzi}
+                  iiifContent={buildMediaURL(mimsImage?.em_dzi)}
                   canvasStore={canvasStoreApi}
                   isotope="em"
                 />
@@ -193,7 +194,7 @@ const MimsImage = ({isRegistering, setIsRegistering}: {isRegistering: boolean, s
               {/* Only render the active tab content */}
               {mimsImage?.isotopes?.map((isotope: any) => {
                 const isAu = isotope.name == "197Au";
-                let url = `http://localhost:8000/api/mims_image/${mimsImage.id}/image.png?species=${isotope.name}`
+                let url = `${API_BASE_URL}mims_image/${mimsImage.id}/image.png?species=${isotope.name}`
                 if (isAu) {
                   url += "&binarize=true"
                 } else {

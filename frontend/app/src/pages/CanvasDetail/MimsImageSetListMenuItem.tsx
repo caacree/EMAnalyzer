@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import api from "../../api/api";
-import { TrashIcon } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCanvasViewer } from "@/stores/canvasViewer";
 import * as Tooltip from '@radix-ui/react-tooltip';
@@ -10,9 +10,7 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 
 const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect: any }) => {
   const queryClient = useQueryClient();
-  const handleDeleteMimsSet = (imageSetId: string) => {
-    api.delete(`/mims_image_set/${imageSetId}/`).then(() => queryClient.invalidateQueries());
-  };
+  const [isExpanded, setIsExpanded] = useState(false);
   const canvasStore = useCanvasViewer();
 
   const updateHoverImg = (hoveredId: string | null) => {
@@ -35,6 +33,11 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
     }
   };
 
+  useEffect(() => {
+    const isRegistered = mimsImageSet?.status.toLowerCase() === 'registered';
+    setIsExpanded(!isRegistered);
+  }, [mimsImageSet]);
+
   return (
       <div className="flex flex-col gap-2">
       <div 
@@ -45,7 +48,12 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
           <Tooltip.Trigger asChild>
             <div className="flex items-center gap-2 truncate">
               <span onClick={() => onSelect(mimsImageSet.id)} className="truncate cursor-pointer">{mimsImageSet.name || mimsImageSet.id}</span>
-              <TrashIcon onClick={() => handleDeleteMimsSet(mimsImageSet.id)} className="cursor-pointer" />
+              <button 
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="text-gray-400 hover:text-gray-300 cursor-pointer bg-transparent border-none"
+              >
+                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
             </div>
           </Tooltip.Trigger>
           <Tooltip.Portal>
@@ -60,22 +68,29 @@ const MIMSImageSet = ({ mimsImageSet, onSelect }: { mimsImageSet: any, onSelect:
         </Tooltip.Root>
         </Tooltip.Provider>
         
-      </div>{mimsImageSet?.status !== 'ALIGNED' ? (mimsImageSet.mims_images?.sort((a: any, b: any) => {
-          const a_priority = STATUS_PRIORITY_MAP[a.status as string];
-          const b_priority = STATUS_PRIORITY_MAP[b.status as string];
-          return (a_priority <= b_priority ? -1 : 1); 
-        }).map((mimsImage: any) => (
-          <div key={mimsImage.id} className="flex items-center gap-2" onMouseEnter={() => updateHoverImg(mimsImage.id)} onMouseLeave={() => updateHoverImg(null)}>
-            <Link 
-              to={`/mims_image/${mimsImage.id}`} 
-              disabled={mimsImage.status === "OUTSIDE_CANVAS"}
-              onClick={() => updateHoverImg(null)}
-            >
-                {extractFileName(mimsImage.file)}
-            </Link>
-            <button className="text-gray-900">{mimsImage.status}</button>
-          </div>
-        ))) : null}</div>
+      </div>
+      {isExpanded ? (
+        <div className="pl-4 mt-2 space-y-1">
+          {mimsImageSet.mims_images?.sort((a: any, b: any) => {
+            const a_priority = STATUS_PRIORITY_MAP[a.status as string];
+            const b_priority = STATUS_PRIORITY_MAP[b.status as string];
+            return (a_priority <= b_priority ? -1 : 1); 
+          }).map((mimsImage: any) => (
+            <div key={mimsImage.id} className="flex items-center gap-2 text-sm" onMouseEnter={() => updateHoverImg(mimsImage.id)} onMouseLeave={() => updateHoverImg(null)}>
+              <Link 
+                to={`/mims_image/${mimsImage.id}`} 
+                disabled={mimsImage.status === "OUTSIDE_CANVAS"}
+                onClick={() => updateHoverImg(null)}
+                className="truncate hover:text-blue-300"
+              >
+                  {extractFileName(mimsImage.file)}
+              </Link>
+              <span className="text-gray-400 text-xs">{mimsImage.status}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 };
 

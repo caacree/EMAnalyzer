@@ -5,6 +5,10 @@ import mims.models
 from django.db import migrations, models
 
 
+def get_mosaic_upload_path(instance, filename):
+    return f"mims/mosaics/{instance.id}/{filename}"
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -27,7 +31,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "mosaic",
-                    models.FileField(upload_to=mims.models.get_mosaic_upload_path),
+                    models.FileField(upload_to=get_mosaic_upload_path),
                 ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
             ],

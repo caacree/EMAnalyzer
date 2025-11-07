@@ -4,16 +4,19 @@ import sims
 from PIL import Image
 import pprint
 from pathlib import Path
-import sims
-import os
-from pathlib import Path
-import sims
 
 
 # Function to get autocontrast image path
 def get_autocontrast_image_path(mims_image, species):
+    from django.conf import settings
+
+    canvas_id = str(mims_image.image_set.canvas.id)
     isotope_image_dir = os.path.join(
-        os.path.dirname(mims_image.file.path),
+        settings.MEDIA_ROOT,
+        "tmp_images",
+        canvas_id,
+        str(mims_image.image_set.id),
+        "mims_images",
         mims_image.file.name.split(".")[0].split("/")[-1],
         "isotopes",
     )
@@ -117,17 +120,6 @@ def get_concatenated_image(mims_image_set, species, flip=False):
 
     canvas_width = int((max_x - min_x) + image_width)
     canvas_height = int((max_y - min_y) + image_height)
-    print(
-        min_x,
-        min_y,
-        max_x,
-        max_y,
-        mims_pixel_size,
-        image_width,
-        image_height,
-        canvas_width,
-        canvas_height,
-    )
 
     canvas = np.zeros((canvas_height, canvas_width), dtype=np.uint8)
 

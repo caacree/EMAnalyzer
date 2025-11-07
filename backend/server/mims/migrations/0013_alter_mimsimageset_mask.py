@@ -14,8 +14,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name="mimsimageset",
             name="mask",
-            field=models.FileField(
-                blank=True, null=True, upload_to=mims.models.get_mask_upload_path
-            ),
+            field=models.FileField(blank=True, null=True),
         ),
     ]

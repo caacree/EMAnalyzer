@@ -8,11 +8,12 @@ from mims.services.register import register_images
 from mims.services.orient_images import largest_inner_square, orient_viewset
 from mims.services.registration_utils import (
     create_registration_images,
+    get_species_summed,
 )
 from mims.model_utils import (
     get_concatenated_image,
 )
-from mims.models import Isotope, MIMSAlignment, MIMSImage, MIMSImageSet
+from mims.models import Isotope, MIMSAlignment, MIMSImage, MIMSImageSet, MIMSOverlay
 from skimage import exposure
 import sims
 import os
@@ -55,7 +56,7 @@ def preprocess_mims_image_set(mims_image_set_id):
             mims and (mims.data is not None) and (mims.data.species is not None)
         )
         if not is_valid_file:
-            mims_image.status = "INVALID_FILE"
+            mims_image.status = MIMSImage.Status.INVALID_FILE
             mims_image.save()
             continue
         mims_meta = mims.header["Image"]
@@ -66,9 +67,14 @@ def preprocess_mims_image_set(mims_image_set_id):
 
         image_dts[mims_image.id] = mims.header["date"]
 
-        # Define the path for saving
+        # Define the path for saving in tmp_images
+        canvas_id = str(mims_image.image_set.canvas.id)
         isotope_image_dir = os.path.join(
-            os.path.dirname(mims_image.file.path),
+            settings.MEDIA_ROOT,
+            "tmp_images",
+            canvas_id,
+            str(mims_image_set.id),
+            "mims_images",
             mims_image.file.name.split(".")[0].split("/")[-1],
             "isotopes",
         )
@@ -78,14 +84,7 @@ def preprocess_mims_image_set(mims_image_set_id):
             iso = Isotope.objects.get_or_create(name=species)
             mims_image.isotopes.add(iso[0])
             # Extract and save the isotope image as a png
-            sr = StackReg(StackReg.AFFINE)
-            sr.register_stack(mims.data.loc[species].to_numpy(), reference="previous")
-            stacked = sr.transform_stack(mims.data.loc[species].to_numpy())
-            stacked = to_uint16(stacked)
-            species_summed = stacked.sum(axis=0)
-            species_summed = ndimage.median_filter(species_summed, size=1).astype(
-                np.uint16
-            )
+            species_summed = get_species_summed(mims, species)
             image_path = os.path.join(isotope_image_dir, f"{species}.png")
             img = Image.fromarray(species_summed)
             img.save(image_path)
@@ -141,7 +140,7 @@ def preprocess_mims_image_set(mims_image_set_id):
                 (np.divide(n15_im, n14_im) * 10000).astype(np.uint16)
             )
             ratio.save(os.path.join(isotope_image_dir, "15N14N_ratio.png"))
-        mims_image.status = "PREPROCESSED"
+        mims_image.status = MIMSImage.Status.PREPROCESSED
         mims_image.save()
 
     # Use the image dts to determine priority number, earlier being better and save as image_set_priority on the mims_image
@@ -162,8 +161,10 @@ def preprocess_mims_image_set(mims_image_set_id):
     if species_15n and species_14n:
         isotopes.append("15N14N_ratio")
     for isotope in isotopes:
+        canvas_id = str(mims_image_set.canvas.id)
         relative_dir = os.path.join(
-            "mims_image_sets",
+            "tmp_images",
+            canvas_id,
             str(mims_image_set.id),
             "composites",
             "isotopes",
@@ -192,6 +193,22 @@ def preprocess_mims_image_set(mims_image_set_id):
                 layout=pyvips.enums.ForeignDzLayout.IIIF3,
             )
 
+        # Create or update MIMSOverlay record for this isotope
+        isotope_obj = Isotope.objects.get(name=isotope)
+        dzi_relative_path = os.path.join(relative_dir, isotope + ".dzi")
+        overlay, created = MIMSOverlay.objects.get_or_create(
+            image_set=mims_image_set,
+            isotope=isotope_obj,
+            defaults={"mosaic": dzi_relative_path},
+        )
+        if not created:
+            overlay.mosaic = dzi_relative_path
+            overlay.save()
+
+    # Set the image set status to preprocessed when all individual images are complete
+    mims_image_set.status = MIMSImageSet.Status.PREPROCESSED
+    mims_image_set.save()
+
     print("MIMS image set preprocessing completed")
 
 
@@ -200,19 +217,15 @@ def estimate_mims_alignment(mims_image_id):
     MIMSImage = apps.get_model("mims", "MIMSImage")
     mims_image = MIMSImage.objects.get(id=mims_image_id)
     if mims_image.status in [
-        "ESTIMATING_ALIGNMENTS_FROM_SET",
-        "ESTIMATED_ALIGNMENTS_FROM_SET",
-        "AWAITING_USER_ALIGNMENT",
-        "CALCULATING_FINAL_ALIGNMENT",
-        "COMPLETE",
+        MIMSImage.Status.REGISTERING,
+        MIMSImage.Status.REGISTERED,
     ]:
         return
     # See if there are any images from the set with confirmed alignments
     confirmed_aligned_images = mims_image.image_set.mims_images.filter(
         status__in=[
-            "AWAITING_USER_ALIGNMENT",
-            "CALCULATING_FINAL_ALIGNMENT",
-            "COMPLETE",
+            MIMSImage.Status.REGISTERING,
+            MIMSImage.Status.REGISTERED,
         ]
     ).exclude(id=mims_image.id)
     if confirmed_aligned_images.exists():
@@ -221,19 +234,19 @@ def estimate_mims_alignment(mims_image_id):
             .alignments.filter(status__in=["ROUGH", "COMPLETE"])
             .first()
         )
-        mims_image.status = "ESTIMATING_ALIGNMENTS_FROM_SET"
+        mims_image.status = MIMSImage.Status.REGISTERING
         mims_image.save()
         create_alignment_estimates(
             mims_image,
             confirmed_alignment,
         )
-        mims_image.status = "ESTIMATED_ALIGNMENTS_FROM_SET"
+        mims_image.status = MIMSImage.Status.REGISTERED
         mims_image.save()
     else:
-        mims_image.status = "ESTIMATING_ALIGNMENTS_INITIAL"
+        mims_image.status = MIMSImage.Status.REGISTERING
         mims_image.save()
         create_alignment_estimates(mims_image)
-        mims_image.status = "ESTIMATED_ALIGNMENTS_INITIAL"
+        mims_image.status = MIMSImage.Status.REGISTERED
         mims_image.save()
 
 
@@ -247,7 +260,7 @@ def orient_viewset_task(mims_image_set_obj_id, viewset_points, isotope):
 def create_registration_images_task(mims_image_obj_id):
     mims_image = get_object_or_404(MIMSImage, pk=mims_image_obj_id)
     create_registration_images(mims_image)
-    mims_image.status = "AWAITING_REGISTRATION"
+    mims_image.status = MIMSImage.Status.REGISTERING
     mims_image.save()
 
 

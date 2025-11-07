@@ -8,21 +8,6 @@ import numpy as np
 from django.utils import timezone
 
 
-def get_mosaic_upload_path(instance, filename):
-    """
-    e.g. mims/mosaics/set_<set_pk>/<isotope>/mosaic_<ts>.tif
-    """
-    ts = timezone.now().strftime("%Y%m%dT%H%M%S")
-    iso = instance.isotope.name.replace(" ", "_")
-    return f"mims/mosaics/set_{instance.image_set.pk}/{iso}/mosaic_{ts}_{filename}"
-
-
-def get_mask_upload_path(instance, filename):
-    """
-    e.g. mims/masks/set_<pk>/<timestamp>.tif
-    """
-    ts = timezone.now().strftime("%Y%m%dT%H%M%S")
-    return f"mims/masks/set_{instance.pk}/{ts}_{filename}"
 
 
 def get_mims_image_upload_path(instance, filename):
@@ -30,7 +15,10 @@ def get_mims_image_upload_path(instance, filename):
 
 
 def get_mims_tiff_image_upload_path(instance, filename):
-    return f"mims_image_sets/{instance.mims_image.image_set.id}/mims_images/final/{filename}"
+    """Store processed MIMS TIFF images in tmp_images organized by canvas and image set"""
+    canvas_id = instance.mims_image.canvas.id
+    image_set_id = instance.mims_image.image_set.id
+    return f"tmp_images/{canvas_id}/{image_set_id}/mims_images/final/{filename}"
 
 
 class Isotope(AbstractBaseModel):
@@ -41,12 +29,21 @@ class Isotope(AbstractBaseModel):
 
 
 class MIMSImageSet(CanvasObj):
+    class Status(models.TextChoices):
+        PREPROCESSING = "preprocessing", "Preprocessing"
+        PREPROCESSED = "preprocessed", "Preprocessed"
+        ROUGH_ALIGNMENT = "rough_alignment", "Rough Alignment"
+        PARTIALLY_REGISTERED = "partially_registered", "Partially Registered"
+        REGISTERED = "registered", "Registered"
+
     canvas = models.ForeignKey(
         Canvas, on_delete=models.CASCADE, related_name="mims_sets"
     )
-    status = models.CharField(max_length=50, default="PREPROCESSING")
-
-    mask = models.FileField(upload_to=get_mask_upload_path, null=True, blank=True)
+    status = models.CharField(
+        max_length=50,
+        choices=Status.choices,
+        default=Status.PREPROCESSING
+    )
 
     def __str__(self):
         return f"{self.canvas.name} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
@@ -81,6 +78,14 @@ class MIMSImageSet(CanvasObj):
 
 
 class MIMSImage(CanvasObj):
+    class Status(models.TextChoices):
+        PREPROCESSING = "preprocessing", "Preprocessing"
+        PREPROCESSED = "preprocessed", "Preprocessed"
+        REGISTERING = "registering", "Registering"
+        REGISTERED = "registered", "Registered"
+        INVALID_FILE = "invalid_file", "Invalid File"
+        OUTSIDE_CANVAS = "outside_canvas", "Outside Canvas"
+
     name = models.CharField(max_length=50, default="")
     canvas = models.ForeignKey(Canvas, on_delete=models.CASCADE, related_name="mims")
     image_set = models.ForeignKey(
@@ -89,18 +94,11 @@ class MIMSImage(CanvasObj):
     transform = models.JSONField(null=True, blank=True)
     image_set_priority = models.IntegerField(default=0)
 
-    # Status options are:
-    # - "PREPROCESSING" for not yet processed
-    # - "PREPROCESSED" for processed and ready for alignment
-    # - "ESTIMATING_ALIGNMENTS_INITIAL" for currently generating estimates
-    # - "ESTIMATED_ALIGNMENTS_INITIAL" for alignment estimates ready, awaiting user selection
-    # - "ESTIMATING_ALIGNMENTS_FROM_SET" for currently generating estimates from the set
-    # - "ESTIMATED_ALIGNMENTS_FROM_SET" for alignment estimates ready, awaiting user selection
-    # - "AWAITING_USER_ALIGNMENT" for user confirmed location (either manual or from an estimate)
-    #    and need user to select points / shapes
-    # - "CALCULATING_FINAL_ALIGNMENT" for processing final alignment after user-selected points
-    # - "COMPLETE" for final alignment after user-selected points
-    status = models.CharField(max_length=50, default="PREPROCESSING")
+    status = models.CharField(
+        max_length=50,
+        choices=Status.choices,
+        default=Status.PREPROCESSING
+    )
     file = models.FileField(upload_to=get_mims_image_upload_path)
     isotopes = models.ManyToManyField(Isotope)
 
@@ -164,7 +162,7 @@ class MIMSOverlay(models.Model):
     isotope = models.ForeignKey(
         Isotope, on_delete=models.CASCADE, related_name="overlays"
     )
-    mosaic = models.FileField(upload_to=get_mosaic_upload_path)
+    mosaic = models.CharField(max_length=500, help_text="Path to DZI file relative to MEDIA_ROOT")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "core",
     "image",
     "mims",
+    "segmentations",
     "django_extensions",
 ]
 
